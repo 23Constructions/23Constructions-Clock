@@ -185,14 +185,25 @@
           <div class="stat"><div class="n" id="statOut" style="color:var(--out)">0</div><div class="l">Out now</div></div>
           <div class="stat"><div class="n" id="statHours">0.0</div><div class="l">Total hrs today</div></div>
         </div>
+        <button class="btn" id="sheetsBtn" style="width:100%;margin-bottom:8px">📊 Export all to Google Sheets</button>
         <div class="row" style="margin-bottom:14px">
-          <button class="btn" id="exportBtn">⬇ Export CSV</button>
+          <button class="btn ghost" id="exportBtn">⬇ All as CSV</button>
           <button class="btn ghost" id="exportTodayBtn">⬇ Today only</button>
         </div>
         <div id="logBody"></div>
         <div class="row" style="margin-top:8px">
           <button class="btn danger sm" id="clearBtn" style="flex:0 0 auto">Clear all records</button>
         </div>
+      </div>
+      <div class="card">
+        <strong>Google Sheets sync</strong>
+        <div class="muted" style="font-size:.82rem;margin:4px 0 12px">Paste the Apps Script Web App URL (ends in <b>/exec</b>). Shared across all devices. The "Export to Google Sheets" button sends every record to that sheet.</div>
+        <label>Web App URL<input type="url" id="sheetUrlInput" placeholder="https://script.google.com/macros/s/…/exec"></label>
+        <div class="row">
+          <button class="btn" id="saveSheetUrlBtn">Save URL</button>
+          <button class="btn ghost" id="testSheetBtn">Test</button>
+        </div>
+        <div class="muted" id="sheetUrlMsg" style="font-size:.8rem;margin-top:8px"></div>
       </div>
       <div class="card">
         <strong>Device registration</strong>
@@ -248,7 +259,8 @@
 
 <script>
 const LS_LOG='nfc_tc_log', LS_ROS='nfc_tc_roster', LS_OWNER='nfc_tc_owner';
-const LS_SITES='nfc_tc_sites', LS_CURSITE='nfc_tc_cursite';
+const LS_SITES='nfc_tc_sites', LS_CURSITE='nfc_tc_cursite', LS_SHEET='nfc_tc_sheeturl';
+let sheetUrl = localStorage.getItem(LS_SHEET)||'';   // Google Apps Script Web App URL (shared via config)
 const MIN_HOURS=8, MAX_HOURS=10;   // <8h flagged short; >10h needs permission
 const DAY_START_H=6, ROUND_MIN=15; // workday starts 6:00; round clock-in UP to 15-min marks
 let mode='IN';                     // set automatically before each record()
@@ -327,6 +339,7 @@ function startSync(){
     var d=doc.data();
     roster = Array.isArray(d.roster)?d.roster:[];
     sites = normalizeSites(d.sites);
+    if(typeof d.sheetUrl==='string'){ sheetUrl=d.sheetUrl; try{localStorage.setItem(LS_SHEET,sheetUrl);}catch(e){} if($('sheetUrlInput'))$('sheetUrlInput').value=sheetUrl; }
     if(!d.sitesSeeded){
       DEFAULT_SITES.forEach(function(s){ if(!sites.some(function(x){return x.name.toLowerCase()===s.name.toLowerCase();})) sites.push(normalizeSite(s)); });
       db.collection('config').doc('shared').set({roster:roster,sites:sites,sitesSeeded:true},{merge:true}).catch(function(){});
@@ -442,6 +455,7 @@ function renderAdmin(){
   $('devOwnerLine').innerHTML=o
     ? 'This phone is registered to <b>'+esc(o.name)+'</b>. Reset only if it was set by mistake.'
     : 'This phone is not registered yet.';
+  if($('sheetUrlInput'))$('sheetUrlInput').value=sheetUrl;
   renderLog();renderRoster();renderManualEmployees();renderSites();
 }
 
@@ -1165,6 +1179,49 @@ function download(name,text){
 $('exportBtn').onclick=()=>{
   if(log.length===0)return alert('No records to export.');
   download('timeclock_all_'+stamp()+'.csv',toCSV([...log].reverse()));
+};
+
+/* ---------- Google Sheets export (Apps Script Web App) ---------- */
+const SHEET_HEAD=['Date','Tap Time','Effective Time','Employee','Job Site','Action','Shift Hours','Status','Source','Approved By','Reason','Emp ID','Timestamp (ISO)'];
+function toSheetRows(rows){
+  return rows.map(e=>{
+    const d=new Date(e.ts);
+    const eff=e.adjTs!=null?new Date(e.adjTs).toLocaleTimeString():'';
+    return [d.toLocaleDateString(),d.toLocaleTimeString(),eff,e.name,e.site||'',e.action,
+            e.shiftHours!=null?e.shiftHours.toFixed(2):'',e.flag||'',
+            e.manual?'Manual (admin)':'Tap/Button',e.permitBy||'',e.permitReason||'',e.id,d.toISOString()];
+  });
+}
+function setSheetMsg(t){ if($('sheetUrlMsg'))$('sheetUrlMsg').textContent=t; }
+$('saveSheetUrlBtn').onclick=()=>{
+  const v=($('sheetUrlInput').value||'').trim();
+  if(v && !/^https:\/\/script\.google\.com\/.*\/exec$/.test(v)){
+    setSheetMsg('⚠ That doesn’t look like a Web App URL (should end in /exec). Saved anyway.');
+  }
+  sheetUrl=v;
+  try{localStorage.setItem(LS_SHEET,sheetUrl);}catch(e){}
+  if(db) db.collection('config').doc('shared').set({sheetUrl:sheetUrl},{merge:true}).catch(function(){});
+  setSheetMsg(v?'✓ Saved. Shared with all devices.':'Cleared.');
+};
+function postToSheets(rows,btn){
+  if(!sheetUrl){ alert('No Google Sheet connected yet. Paste your Apps Script Web App URL in the "Google Sheets sync" card and Save.'); return; }
+  const label=btn?btn.textContent:''; if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  fetch(sheetUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({header:SHEET_HEAD,records:rows})})
+    .then(()=>{ setSheetMsg('✓ Sent '+rows.length+' record(s) to Google Sheets at '+new Date().toLocaleTimeString()+'. Open your sheet to confirm.');
+                showStatus('ok','Sent to Google Sheets',rows.length+' record(s) pushed. Check your sheet.'); })
+    .catch(err=>{ setSheetMsg('✗ Failed: '+err); alert('Could not reach Google Sheets. Check the URL and that the Web App is deployed to "Anyone".'); })
+    .finally(()=>{ if(btn){btn.disabled=false;btn.textContent=label;} });
+}
+$('sheetsBtn').onclick=function(){
+  if(log.length===0)return alert('No records to export.');
+  postToSheets(toSheetRows([...log].reverse()),this);
+};
+$('testSheetBtn').onclick=function(){
+  const v=($('sheetUrlInput').value||'').trim();
+  if(!v)return setSheetMsg('Enter a URL first.');
+  sheetUrl=v;
+  postToSheets(toSheetRows([{ts:Date.now(),name:'TEST ROW',site:'—',action:'IN',id:'test'}]),this);
 };
 $('exportTodayBtn').onclick=()=>{
   const today=new Date().toDateString();
