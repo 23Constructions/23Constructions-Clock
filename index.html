@@ -58,6 +58,10 @@
   .badge{padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:700}
   .badge.IN{background:var(--in-bg);color:var(--in)}
   .badge.OUT{background:var(--out-bg);color:var(--out)}
+  .badge.MATERIAL{background:#2a1e3a;color:#c4b5fd}
+  .badge.LABOUR{background:#0e2f3a;color:#67e8f9}
+  .mode-toggle button.sel-mat{border-color:#a78bfa;background:#241a35;color:#c4b5fd}
+  .mode-toggle button.sel-lab{border-color:#22d3ee;background:#0c2b34;color:#67e8f9}
   .flag{padding:1px 7px;border-radius:20px;font-size:.68rem;font-weight:700;margin-left:4px;white-space:nowrap}
   .fl-ok{background:var(--in-bg);color:var(--in)}
   .fl-short{background:#3a1212;color:#fca5a5}
@@ -109,6 +113,7 @@
   <div class="tabs">
     <button class="active" data-tab="clock">Clock</button>
     <button data-tab="foreman">Foreman 🔒</button>
+    <button data-tab="projects">Projects 🔒</button>
     <button data-tab="admin">Admin 🔒</button>
   </div>
 
@@ -255,12 +260,86 @@
       </div>
     </div>
   </section>
+
+  <!-- PROJECTS (materials & labour cost tracking, admin password) -->
+  <section class="panel" id="tab-projects">
+    <div class="card lock-card" id="projectsLock"></div>
+    <div id="projectsBody" style="display:none">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong>Project costs — materials &amp; labour</strong>
+          <button class="btn ghost sm" id="pLockBtn" style="flex:0 0 auto">Lock</button>
+        </div>
+        <label>Project<select id="projFilter"></select></label>
+        <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);margin-top:6px">
+          <div class="stat"><div class="n" id="pStatMat" style="color:#c4b5fd">$0.00</div><div class="l">Materials</div></div>
+          <div class="stat"><div class="n" id="pStatLab" style="color:#67e8f9">$0.00</div><div class="l">Labour</div></div>
+          <div class="stat"><div class="n" id="pStatTot">$0.00</div><div class="l">Total</div></div>
+        </div>
+        <div class="muted" id="pBudgetLine" style="font-size:.82rem;margin-bottom:12px"></div>
+        <button class="btn" id="pSheetsBtn" style="width:100%;margin-bottom:8px">📊 Send project costs to Google Sheets</button>
+        <div class="row" style="margin-bottom:6px">
+          <button class="btn ghost" id="pExportBtn">⬇ All CSV</button>
+          <button class="btn ghost" id="pExportMatBtn">⬇ Materials</button>
+          <button class="btn ghost" id="pExportLabBtn">⬇ Labour</button>
+        </div>
+        <div class="muted" style="font-size:.78rem;margin-top:6px">Materials &amp; labour go to Google Sheets on one “Project Costs” tab with a <b>Type</b> column, so they stay separable. Connect the Web App URL in <b>Admin → Google Sheets sync</b> (shared across all devices).</div>
+        <div class="muted" id="pSheetMsg" style="font-size:.8rem;margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <strong>Add cost entry</strong>
+        <div class="mode-toggle" style="margin-top:12px">
+          <button id="pModeMat" class="sel-mat">🧱 MATERIALS</button>
+          <button id="pModeLab">👷 LABOUR</button>
+        </div>
+        <label>Project<select id="pEntryProj"></select></label>
+        <label>Description<input id="pDesc" placeholder="e.g. 20× cement bags / Framing crew"></label>
+        <label id="pPartyLbl">Supplier<input id="pParty" placeholder="Vendor / worker name"></label>
+        <div class="row">
+          <label style="flex:1"><span id="pQtyLbl">Quantity</span><input id="pQty" type="number" step="any" inputmode="decimal" placeholder="optional"></label>
+          <label style="flex:1"><span id="pUnitLbl">Unit cost</span><input id="pUnit" type="number" step="any" inputmode="decimal" placeholder="optional"></label>
+        </div>
+        <label>Amount ($) <span style="color:var(--muted)">(auto from qty × unit, or type it)</span><input id="pAmount" type="number" step="any" inputmode="decimal" placeholder="0.00"></label>
+        <label>Date <span style="color:var(--muted)">(blank = today)</span><input id="pDate" type="date"></label>
+        <label>Notes <span style="color:var(--muted)">(optional)</span><input id="pNotes" placeholder=""></label>
+        <button class="btn" style="width:100%" id="pAddBtn">Record cost</button>
+        <div class="status" id="pStatus"></div>
+      </div>
+
+      <div class="card">
+        <strong>Cost entries</strong>
+        <div id="pLogBody" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <strong>Manage projects</strong>
+        <div style="margin-top:12px">
+          <label>Project name<input id="projName" placeholder="e.g. 80 Collins Street Fit-out"></label>
+          <div class="row">
+            <label style="flex:1">Client <span style="color:var(--muted)">(optional)</span><input id="projClient" placeholder=""></label>
+            <label style="flex:1">Budget ($) <span style="color:var(--muted)">(optional)</span><input id="projBudget" type="number" step="any" inputmode="decimal" placeholder=""></label>
+          </div>
+          <button class="btn" style="width:100%" id="addProjBtn">Add / save project</button>
+          <div class="status" id="projStatus"></div>
+          <div id="projList" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script>
 const LS_LOG='nfc_tc_log', LS_ROS='nfc_tc_roster', LS_OWNER='nfc_tc_owner';
 const LS_SITES='nfc_tc_sites', LS_CURSITE='nfc_tc_cursite', LS_SHEET='nfc_tc_sheeturl';
+const LS_PROJ='nfc_tc_projects', LS_PCOSTS='nfc_tc_pcosts', LS_CURPROJ='nfc_tc_curproj';
 let sheetUrl = localStorage.getItem(LS_SHEET)||'';   // Google Apps Script Web App URL (shared via config)
+// project cost tracking: materials & labour recorded separately per project
+let projectList = load(LS_PROJ, []);        // [{key,name,client,budget}]
+let projectCosts = load(LS_PCOSTS, []);     // [{uid,ts,project,type:'MATERIAL'|'LABOUR',desc,party,qty,unitCost,amount,notes}]
+let curProj = localStorage.getItem(LS_CURPROJ)||'';  // selected project filter ('' = all)
+let projMode='MATERIAL';                    // Materials/Labour toggle for the entry form
+let projectsUnlocked=false;                 // session-only; admin password gates the tab
 const MIN_HOURS=8, MAX_HOURS=10;   // <8h flagged short; >10h needs permission
 const DAY_START_H=6, ROUND_MIN=15; // workday starts 6:00; round clock-in UP to 15-min marks
 let mode='IN';                     // set automatically before each record()
@@ -315,6 +394,9 @@ function fbSetRecord(e){ if(!db||!e||!e.uid)return; db.collection('records').doc
 function fbDeleteRecord(uid){ if(!db||!uid)return; db.collection('records').doc(uid).delete().catch(function(err){console.warn('del record',err);}); }
 function fbClearRecords(){ if(!db)return; db.collection('records').get().then(function(s){var b=db.batch();s.forEach(function(d){b.delete(d.ref);});return b.commit();}).catch(function(err){console.warn('clear',err);}); }
 function fbSaveConfig(){ if(!db)return; db.collection('config').doc('shared').set({roster:roster,sites:sites,sitesSeeded:true},{merge:true}).catch(function(err){console.warn('save config',err);}); }
+function fbSetProjectCost(e){ if(!db||!e||!e.uid)return; db.collection('projectCosts').doc(e.uid).set(fbStripUndef(e)).catch(function(err){console.warn('save pcost',err);}); }
+function fbDeleteProjectCost(uid){ if(!db||!uid)return; db.collection('projectCosts').doc(uid).delete().catch(function(err){console.warn('del pcost',err);}); }
+function fbSaveProjects(){ if(!db)return; db.collection('config').doc('shared').set({projects:projectList},{merge:true}).catch(function(err){console.warn('save projects',err);}); }
 
 function startSync(){
   if(!db)return;
@@ -327,6 +409,13 @@ function startSync(){
     syncReady=true;
     renderClock(); if(adminUnlocked)renderAdmin(); if(foremanUnlocked)renderForeman();
   }, function(err){console.warn('records sync',err);});
+  // shared project cost entries (materials & labour) across all devices
+  db.collection('projectCosts').onSnapshot(function(snap){
+    projectCosts = snap.docs.map(function(d){return d.data();});
+    projectCosts.sort(function(a,b){return b.ts-a.ts;});
+    try{localStorage.setItem(LS_PCOSTS,JSON.stringify(projectCosts));}catch(e){}
+    if(projectsUnlocked)renderProjects();
+  }, function(err){console.warn('pcosts sync',err);});
   // shared roster + job sites — Firestore is the single source of truth.
   // (Every add/edit/delete writes here, so we must NOT union local back in,
   //  otherwise deletes bounce back. We only seed once when the doc is empty.)
@@ -340,6 +429,7 @@ function startSync(){
     roster = Array.isArray(d.roster)?d.roster:[];
     sites = normalizeSites(d.sites);
     if(typeof d.sheetUrl==='string'){ sheetUrl=d.sheetUrl; try{localStorage.setItem(LS_SHEET,sheetUrl);}catch(e){} if($('sheetUrlInput'))$('sheetUrlInput').value=sheetUrl; }
+    if(Array.isArray(d.projects)){ projectList=d.projects; try{localStorage.setItem(LS_PROJ,JSON.stringify(projectList));}catch(e){} if(projectsUnlocked)renderProjects(); }
     if(!d.sitesSeeded){
       DEFAULT_SITES.forEach(function(s){ if(!sites.some(function(x){return x.name.toLowerCase()===s.name.toLowerCase();})) sites.push(normalizeSite(s)); });
       db.collection('config').doc('shared').set({roster:roster,sites:sites,sitesSeeded:true},{merge:true}).catch(function(){});
@@ -362,6 +452,9 @@ roster.forEach(r=>{
 });
 // give every record a stable uid (for admin edit/delete)
 log.forEach(e=>{ if(!e.uid)e.uid='R'+e.ts.toString(36)+Math.random().toString(36).slice(2,6); });
+// project tracking: ensure stable keys/uids on any locally-cached data
+projectList.forEach(p=>{ if(!p.key)p.key=newKey(); });
+projectCosts.forEach(e=>{ if(!e.uid)e.uid='P'+((e.ts||0)).toString(36)+Math.random().toString(36).slice(2,6); });
 save();
 
 /* ---------- live clock ---------- */
@@ -375,6 +468,7 @@ document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
   b.classList.add('active');$('tab-'+b.dataset.tab).classList.add('active');
   if(b.dataset.tab==='admin')renderAdmin();
   if(b.dataset.tab==='foreman')renderForeman();
+  if(b.dataset.tab==='projects')renderProjects();
   if(b.dataset.tab==='clock')renderClock();
 });
 
@@ -390,6 +484,11 @@ function tryUnlock(inputId){
   const v=($(inputId).value||'').trim();
   if(inputId==='pwf'){ // foreman gate (2323; admin pw also works)
     if(v===FOREMAN_PW||v===ADMIN_PW){foremanUnlocked=true;renderForeman();}
+    else{$(inputId).value='';$(inputId).placeholder='Wrong — try again';}
+    return;
+  }
+  if(inputId==='pwp'){ // projects gate (admin password)
+    if(v===ADMIN_PW){projectsUnlocked=true;renderProjects();}
     else{$(inputId).value='';$(inputId).placeholder='Wrong — try again';}
     return;
   }
@@ -1251,7 +1350,216 @@ $('lockBtn').onclick=lockAdmin;
 function stamp(){return new Date().toISOString().slice(0,10)}
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 
-setMode('IN');renderSites();renderClock();renderAdmin();renderForeman();
+/* ===================== Project costs: materials & labour ===================== */
+function saveProjects(){try{localStorage.setItem(LS_PROJ,JSON.stringify(projectList));}catch(e){}}
+function savePCosts(){try{localStorage.setItem(LS_PCOSTS,JSON.stringify(projectCosts));}catch(e){}}
+function money(n){ n=+n||0; return '$'+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function projCostsFor(name){ return name?projectCosts.filter(e=>e.project===name):projectCosts.slice(); }
+function sumType(list,type){ return list.filter(e=>e.type===type).reduce((s,e)=>s+(+e.amount||0),0); }
+function projectOptions(selected,includeAll){
+  const opts=[includeAll?'<option value="">— All projects —</option>':'<option value="">— Select project —</option>'];
+  projectList.forEach(p=>opts.push(`<option value="${esc(p.name)}"${p.name===selected?' selected':''}>${esc(p.name)}</option>`));
+  return opts.join('');
+}
+
+/* ---------- projects gate ---------- */
+function lockProjects(){projectsUnlocked=false;renderProjects();}
+function renderProjects(){
+  if(!projectsUnlocked){
+    $('projectsLock').style.display='';
+    $('projectsLock').innerHTML=lockHTML('pwp','Project costs','Enter the admin password to track materials & labour costs by project.');
+    $('projectsBody').style.display='none';return;
+  }
+  $('projectsLock').style.display='none';$('projectsBody').style.display='';
+  renderProjectSelectors();renderProjectSummary();renderProjectLog();renderProjectList();
+}
+function renderProjectSelectors(){
+  const f=$('projFilter'); if(f)f.innerHTML=projectOptions(curProj,true);
+  const pe=$('pEntryProj'); if(pe){ const cur=pe.value||curProj; pe.innerHTML=projectOptions('',false); if(cur)pe.value=cur; }
+}
+function renderProjectSummary(){
+  const list=projCostsFor(curProj);
+  const mat=sumType(list,'MATERIAL'), lab=sumType(list,'LABOUR');
+  $('pStatMat').textContent=money(mat);
+  $('pStatLab').textContent=money(lab);
+  $('pStatTot').textContent=money(mat+lab);
+  let line='';
+  if(curProj){
+    const p=projectList.find(x=>x.name===curProj);
+    if(p&&p.budget!=null){ const rem=p.budget-(mat+lab); line='Budget '+money(p.budget)+' · '+(rem>=0?money(rem)+' remaining':money(-rem)+' over budget'); }
+    else line='No budget set for this project.';
+  } else { line=projectList.length+' project(s) · '+list.length+' cost entr'+(list.length===1?'y':'ies'); }
+  $('pBudgetLine').textContent=line;
+}
+function renderProjectLog(){
+  const el=$('pLogBody'); if(!el)return;
+  const rows=projCostsFor(curProj);
+  if(rows.length===0){el.innerHTML='<div class="empty">No cost entries yet.</div>';return;}
+  const showProj=!curProj;
+  el.innerHTML='<table><thead><tr><th>Date</th>'+(showProj?'<th>Project</th>':'')+'<th>Type</th><th>Details</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>'+
+    rows.slice(0,300).map(e=>{
+      const d=new Date(e.ts);
+      const qtyNote=(e.qty!=null&&e.unitCost!=null)?`<br><span class="muted">${e.qty} × ${money(e.unitCost)}</span>`:'';
+      const party=e.party?`<br><span class="muted">${esc(e.party)}</span>`:'';
+      const notes=e.notes?`<br><span class="muted">${esc(e.notes)}</span>`:'';
+      const acts=`<button class="btn ghost sm" onclick="editPCost('${e.uid}')">✎</button> <button class="btn danger sm" onclick="deletePCost('${e.uid}')">🗑</button>`;
+      return `<tr><td>${d.toLocaleDateString()}</td>${showProj?'<td>'+esc(e.project||'')+'</td>':''}
+        <td><span class="badge ${e.type==='LABOUR'?'LABOUR':'MATERIAL'}">${e.type==='LABOUR'?'LABOUR':'MATERIAL'}</span></td>
+        <td>${esc(e.desc||'')}${qtyNote}${party}${notes}</td>
+        <td style="text-align:right;white-space:nowrap">${money(e.amount)}</td>
+        <td style="white-space:nowrap">${acts}</td></tr>`;
+    }).join('')+'</tbody></table>';
+}
+function renderProjectList(){
+  const el=$('projList'); if(!el)return;
+  if(projectList.length===0){el.innerHTML='<div class="empty">No projects yet — add one above.</div>';return;}
+  el.innerHTML=projectList.map((p,i)=>{
+    const list=projCostsFor(p.name);
+    const tot=sumType(list,'MATERIAL')+sumType(list,'LABOUR');
+    const bud=p.budget!=null?(' · budget '+money(p.budget)):'';
+    return `<div class="roster-item"><div class="info"><div class="name">${esc(p.name)}</div>
+      <div class="id">${p.client?esc(p.client)+' · ':''}spent ${money(tot)}${bud}</div></div>
+      <button class="btn ghost sm" onclick="editProject(${i})">Edit</button>
+      <button class="btn danger sm" onclick="delProject(${i})">Remove</button></div>`;
+  }).join('');
+}
+
+/* ---------- materials / labour toggle ---------- */
+function setProjMode(m){
+  projMode=m;
+  $('pModeMat').className=m==='MATERIAL'?'sel-mat':'';
+  $('pModeLab').className=m==='LABOUR'?'sel-lab':'';
+  if($('pPartyLbl'))$('pPartyLbl').firstChild.nodeValue=m==='MATERIAL'?'Supplier':'Worker';
+  if($('pQtyLbl'))$('pQtyLbl').textContent=m==='MATERIAL'?'Quantity':'Hours';
+  if($('pUnitLbl'))$('pUnitLbl').textContent=m==='MATERIAL'?'Unit cost':'Rate / hr';
+}
+$('pModeMat').onclick=()=>setProjMode('MATERIAL');
+$('pModeLab').onclick=()=>setProjMode('LABOUR');
+
+/* ---------- add / edit / delete cost entries ---------- */
+$('pAddBtn').onclick=()=>{
+  if(!projectsUnlocked)return;
+  const proj=$('pEntryProj').value;
+  if(!proj){showStatus('err','Pick a project','Add a project in “Manage projects” first.','pStatus');return;}
+  const desc=$('pDesc').value.trim();
+  if(!desc){showStatus('err','Description required','','pStatus');return;}
+  let qty=parseFloat($('pQty').value); if(isNaN(qty))qty=null;
+  let unit=parseFloat($('pUnit').value); if(isNaN(unit))unit=null;
+  let amount=parseFloat($('pAmount').value);
+  if(isNaN(amount)) amount=(qty!=null&&unit!=null)?qty*unit:NaN;
+  if(isNaN(amount)){showStatus('err','Amount required','Enter an amount, or quantity × unit cost.','pStatus');return;}
+  const dv=$('pDate').value; let ts=dv?new Date(dv+'T12:00').getTime():Date.now();
+  if(isNaN(ts))ts=Date.now();
+  const entry={uid:'P'+ts.toString(36)+Math.random().toString(36).slice(2,6),ts,project:proj,type:projMode,
+    desc,party:$('pParty').value.trim(),qty,unitCost:unit,amount:Math.round(amount*100)/100,notes:$('pNotes').value.trim()};
+  projectCosts.unshift(entry);projectCosts.sort((a,b)=>b.ts-a.ts);
+  savePCosts();fbSetProjectCost(entry);
+  $('pDesc').value='';$('pParty').value='';$('pQty').value='';$('pUnit').value='';$('pAmount').value='';$('pNotes').value='';
+  showStatus('ok','Cost recorded',(projMode==='LABOUR'?'Labour · ':'Materials · ')+money(entry.amount),'pStatus');
+  renderProjectSummary();renderProjectLog();renderProjectList();
+};
+function editPCost(uid){
+  if(!projectsUnlocked)return;
+  const e=projectCosts.find(x=>x.uid===uid); if(!e)return;
+  const v=prompt('Edit amount ($) for “'+e.desc+'”:',(+e.amount||0));
+  if(v===null)return; const a=parseFloat(v); if(isNaN(a)){alert('Invalid amount.');return;}
+  e.amount=Math.round(a*100)/100; e.qty=null; e.unitCost=null;
+  savePCosts();fbSetProjectCost(e);renderProjectSummary();renderProjectLog();renderProjectList();
+}
+function deletePCost(uid){
+  if(!projectsUnlocked)return;
+  const e=projectCosts.find(x=>x.uid===uid); if(!e)return;
+  if(!confirm('Delete this '+(e.type==='LABOUR'?'labour':'materials')+' entry ('+money(e.amount)+')?'))return;
+  projectCosts=projectCosts.filter(x=>x.uid!==uid);
+  fbDeleteProjectCost(uid);savePCosts();renderProjectSummary();renderProjectLog();renderProjectList();
+}
+
+/* ---------- manage projects ---------- */
+$('addProjBtn').onclick=()=>{
+  if(!projectsUnlocked)return;
+  const name=$('projName').value.trim();
+  if(!name){showStatus('err','Project name required','','projStatus');return;}
+  const client=$('projClient').value.trim();
+  let budget=parseFloat($('projBudget').value); if(isNaN(budget))budget=null;
+  const i=projectList.findIndex(p=>p.name.toLowerCase()===name.toLowerCase());
+  if(i>=0){ projectList[i].name=name; projectList[i].client=client; projectList[i].budget=budget; }
+  else projectList.push({key:newKey(),name,client,budget});
+  saveProjects();fbSaveProjects();
+  $('projName').value='';$('projClient').value='';$('projBudget').value='';
+  showStatus('ok',(i>=0?'Project saved':'Project added'),name,'projStatus');
+  renderProjectSelectors();renderProjectList();renderProjectSummary();
+};
+function editProject(i){
+  if(!projectsUnlocked)return;
+  const p=projectList[i]; if(!p)return;
+  $('projName').value=p.name;$('projClient').value=p.client||'';$('projBudget').value=(p.budget==null?'':p.budget);
+  showStatus('warn','Editing '+p.name,'Change fields, then tap “Add / save project”.','projStatus');
+}
+function delProject(i){
+  if(!projectsUnlocked)return;
+  const p=projectList[i]; if(!p)return;
+  if(!confirm('Remove project “'+p.name+'”? Existing cost entries keep their project name.'))return;
+  if(curProj===p.name){curProj='';try{localStorage.setItem(LS_CURPROJ,'');}catch(e){}}
+  projectList.splice(i,1);saveProjects();fbSaveProjects();
+  renderProjectSelectors();renderProjectList();renderProjectSummary();renderProjectLog();
+}
+
+/* ---------- project filter ---------- */
+$('projFilter').onchange=()=>{
+  curProj=$('projFilter').value;
+  try{localStorage.setItem(LS_CURPROJ,curProj);}catch(e){}
+  if(curProj&&$('pEntryProj'))$('pEntryProj').value=curProj;
+  renderProjectSummary();renderProjectLog();
+};
+
+/* ---------- project costs → Google Sheets + CSV ---------- */
+const PROJ_SHEET_HEAD=['Date','Project','Type','Description','Supplier / Worker','Quantity','Unit Cost','Amount','Notes','Entry ID','Timestamp (ISO)'];
+function toProjSheetRows(rows){
+  return rows.map(e=>{
+    const d=new Date(e.ts);
+    return [d.toLocaleDateString(),e.project||'',e.type==='LABOUR'?'Labour':'Materials',e.desc||'',e.party||'',
+      e.qty!=null?e.qty:'',e.unitCost!=null?e.unitCost:'',(+e.amount||0).toFixed(2),e.notes||'',e.uid,d.toISOString()];
+  });
+}
+function projToCSV(rows){
+  const body=toProjSheetRows(rows).map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+  return [PROJ_SHEET_HEAD.join(','),...body].join('\r\n');
+}
+function setProjSheetMsg(t){ if($('pSheetMsg'))$('pSheetMsg').textContent=t; }
+function postProjToSheets(rows,btn){
+  if(!sheetUrl){ alert('No Google Sheet connected yet. Add the Apps Script Web App URL in Admin → “Google Sheets sync” and Save.'); return; }
+  const label=btn?btn.textContent:''; if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  fetch(sheetUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({sheet:'Project Costs',header:PROJ_SHEET_HEAD,records:rows})})
+    .then(()=>{ setProjSheetMsg('✓ Sent '+rows.length+' cost row(s) to Google Sheets at '+new Date().toLocaleTimeString()+'. Open your sheet to confirm.');
+                showStatus('ok','Sent to Google Sheets',rows.length+' cost row(s) pushed.','pStatus'); })
+    .catch(err=>{ setProjSheetMsg('✗ Failed: '+err); alert('Could not reach Google Sheets. Check the URL and that the Web App is deployed to “Anyone”.'); })
+    .finally(()=>{ if(btn){btn.disabled=false;btn.textContent=label;} });
+}
+$('pSheetsBtn').onclick=function(){
+  const rows=projCostsFor(curProj);
+  if(rows.length===0)return alert('No cost entries to send.');
+  postProjToSheets(toProjSheetRows(rows.slice().reverse()),this);
+};
+$('pExportBtn').onclick=()=>{
+  const rows=projCostsFor(curProj);
+  if(rows.length===0)return alert('No cost entries to export.');
+  download('project_costs_'+stamp()+'.csv',projToCSV(rows.slice().reverse()));
+};
+$('pExportMatBtn').onclick=()=>{
+  const rows=projCostsFor(curProj).filter(e=>e.type==='MATERIAL');
+  if(rows.length===0)return alert('No materials entries to export.');
+  download('materials_'+stamp()+'.csv',projToCSV(rows.slice().reverse()));
+};
+$('pExportLabBtn').onclick=()=>{
+  const rows=projCostsFor(curProj).filter(e=>e.type==='LABOUR');
+  if(rows.length===0)return alert('No labour entries to export.');
+  download('labour_'+stamp()+'.csv',projToCSV(rows.slice().reverse()));
+};
+$('pLockBtn').onclick=lockProjects;
+/* ============================================================================= */
+
+setMode('IN');setProjMode('MATERIAL');renderSites();renderClock();renderAdmin();renderForeman();renderProjects();
 startSync();   // attach Firebase realtime listeners (all devices stay in sync)
 </script>
 </body>
