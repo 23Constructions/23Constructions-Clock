@@ -259,6 +259,7 @@
 
 <script>
 const LS_LOG='nfc_tc_log', LS_ROS='nfc_tc_roster', LS_OWNER='nfc_tc_owner';
+const LS_OWNERINFO='nfc_tc_ownerinfo'; // full owner {key,name,card} — lets this phone self-heal if the shared roster drops the entry
 const LS_SITES='nfc_tc_sites', LS_CURSITE='nfc_tc_cursite', LS_SHEET='nfc_tc_sheeturl';
 let sheetUrl = localStorage.getItem(LS_SHEET)||'';   // Google Apps Script Web App URL (shared via config)
 const MIN_HOURS=8, MAX_HOURS=10;   // <8h flagged short; >10h needs permission
@@ -267,6 +268,7 @@ let mode='IN';                     // set automatically before each record()
 let log = load(LS_LOG, []);
 let roster = load(LS_ROS, []);
 let ownerKey = localStorage.getItem(LS_OWNER)||'';  // this device belongs to one person
+let ownerInfo = (function(){ try{return JSON.parse(localStorage.getItem(LS_OWNERINFO))||null}catch(e){return null} })(); // {key,name,card}
 // shared default job sites baked into the app — every phone sees these
 // each site: {name, lat, lng, radius(m), geo} — geo=false means no geofence (e.g. Warehouse/Storage)
 const DEFAULT_SITES=[
@@ -344,6 +346,7 @@ function startSync(){
       DEFAULT_SITES.forEach(function(s){ if(!sites.some(function(x){return x.name.toLowerCase()===s.name.toLowerCase();})) sites.push(normalizeSite(s)); });
       db.collection('config').doc('shared').set({roster:roster,sites:sites,sitesSeeded:true},{merge:true}).catch(function(){});
     }
+    ensureOwnerInRoster(); // re-add this phone's person if a stale roster overwrite dropped them
     try{localStorage.setItem(LS_ROS,JSON.stringify(roster));localStorage.setItem(LS_SITES,JSON.stringify(sites));}catch(e){}
     renderSites(); renderClock(); if(adminUnlocked)renderAdmin(); if(foremanUnlocked)renderForeman();
   }, function(err){console.warn('config sync',err);});
@@ -460,9 +463,36 @@ function renderAdmin(){
 }
 
 /* ---------- device owner (one person per phone) ---------- */
-function getOwner(){return roster.find(r=>r.key===ownerKey)||null;}
+// Return this phone's owner. Falls back to the locally-stored owner snapshot so the
+// phone still shows as registered even if the shared roster momentarily lacks the entry.
+function getOwner(){
+  if(!ownerKey) return null;
+  return roster.find(r=>r.key===ownerKey) || (ownerInfo && ownerInfo.key===ownerKey ? ownerInfo : null);
+}
 function saveOwner(){localStorage.setItem(LS_OWNER,ownerKey||'');}
-function setOwner(k){ownerKey=k;saveOwner();renderClock();}
+function saveOwnerInfo(){ try{ ownerInfo?localStorage.setItem(LS_OWNERINFO,JSON.stringify(ownerInfo)):localStorage.removeItem(LS_OWNERINFO); }catch(e){} }
+function setOwner(k){
+  ownerKey=k;saveOwner();
+  const o=roster.find(r=>r.key===k);
+  if(o){ownerInfo={key:o.key,name:o.name,card:o.card||''};saveOwnerInfo();}
+  renderClock();
+}
+// Self-heal: make sure this phone's registered person is present in the shared roster.
+// If a stale write from another device (or a lost registration write) dropped them,
+// re-insert from the local snapshot and push back to Firestore. Keeps registration permanent.
+function ensureOwnerInRoster(){
+  if(!ownerKey) return;
+  const o=roster.find(r=>r.key===ownerKey);
+  if(o){ // present — refresh the local snapshot so we always have their latest name
+    if(!ownerInfo||ownerInfo.key!==o.key||ownerInfo.name!==o.name){ ownerInfo={key:o.key,name:o.name,card:o.card||''}; saveOwnerInfo(); }
+    return;
+  }
+  if(ownerInfo && ownerInfo.key===ownerKey){
+    roster.push({key:ownerInfo.key,name:ownerInfo.name,card:ownerInfo.card||''});
+    save();
+    if(db) fbSaveConfig();
+  }
+}
 // employee self-registration by name — permanent once set
 function registerSelf(){
   const name=($('selfName')&&$('selfName').value||'').trim();
@@ -475,7 +505,7 @@ function registerSelf(){
   showStatus('ok','Welcome, '+name,'This phone is now registered to you.');
 }
 // admin-only reset (safety net for typos); not shown on the clock screen
-function changeOwner(){if(!ensureAdmin())return;if(confirm('Reset this device registration? The next person to enter their name will own it.')){ownerKey='';saveOwner();renderClock();renderAdmin();}}
+function changeOwner(){if(!ensureAdmin())return;if(confirm('Reset this device registration? The next person to enter their name will own it.')){ownerKey='';saveOwner();ownerInfo=null;saveOwnerInfo();renderClock();renderAdmin();}}
 
 function renderOwnerCard(){
   const el=$('ownerCard'), o=getOwner();
@@ -1073,7 +1103,7 @@ function editEmp(i){
   showStatus('ok','Name updated',n,'rosterStatus');
 }
 function delEmp(i){if(confirm('Remove '+roster[i].name+'?')){
-  if(roster[i].key===ownerKey){ownerKey='';saveOwner();}
+  if(roster[i].key===ownerKey){ownerKey='';saveOwner();ownerInfo=null;saveOwnerInfo();}
   roster.splice(i,1);save();fbSaveConfig();renderRoster();renderManualEmployees();renderClock();}}
 
 /* ---------- admin: edit / delete a record ---------- */
@@ -1251,7 +1281,7 @@ $('lockBtn').onclick=lockAdmin;
 function stamp(){return new Date().toISOString().slice(0,10)}
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 
-setMode('IN');renderSites();renderClock();renderAdmin();renderForeman();
+ensureOwnerInRoster();setMode('IN');renderSites();renderClock();renderAdmin();renderForeman();
 startSync();   // attach Firebase realtime listeners (all devices stay in sync)
 </script>
 </body>
