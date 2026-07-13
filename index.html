@@ -117,6 +117,21 @@
   .site-pin .pin.on{background:var(--in)} .site-pin .pin.off{background:#64748b}
   .leaflet-tooltip{background:var(--charcoal);color:#fff;border:1px solid var(--charcoal);border-radius:6px;font-size:.8rem}
   .leaflet-tooltip-top:before{border-top-color:var(--charcoal)}
+  /* records filter bar */
+  .log-filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+  .log-filters select,.log-filters input{margin-top:0}
+  #fltSearch{grid-column:1/-1}
+  /* grouped employee rows */
+  .emp-group{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;overflow:hidden;background:var(--card)}
+  .emp-head{display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer;background:var(--card2);user-select:none}
+  .emp-head .caret{color:var(--muted);width:12px;flex:0 0 auto;font-size:.8rem}
+  .emp-head .egn{font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .emp-head .eg-meta{color:var(--muted);font-size:.78rem;white-space:nowrap;flex:0 0 auto}
+  .emp-detail{padding:2px 12px 8px}
+  .punch{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .punch .pinfo{flex:1;min-width:0;font-size:.9rem;line-height:1.35}
+  .punch .pinfo .psub{color:var(--muted);font-size:.8rem}
+  .punch .pacts{display:flex;gap:6px;flex:0 0 auto}
   /* On narrow phones, stack each record into a tidy card instead of a cramped 5-column table */
   @media (max-width:560px){
     #logBody thead, #foremanLog thead{display:none}
@@ -235,6 +250,19 @@
           <button class="btn ghost" id="exportBtn">⬇ All as CSV</button>
           <button class="btn ghost" id="exportTodayBtn">⬇ Today only</button>
         </div>
+        <div class="log-filters">
+          <select id="fltRange">
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="date">On a date…</option>
+            <option value="all">All time</option>
+          </select>
+          <input type="date" id="fltDate" style="display:none">
+          <select id="fltEmp"><option value="">All employees</option></select>
+          <select id="fltSite"><option value="">All sites</option></select>
+          <input type="search" id="fltSearch" placeholder="🔍 Search name…">
+        </div>
+        <div class="muted" id="logCount" style="font-size:.78rem;margin-bottom:8px"></div>
         <div id="logBody"></div>
         <div class="row" style="margin-top:8px">
           <button class="btn danger sm" id="clearBtn" style="flex:0 0 auto">Clear all records</button>
@@ -1238,44 +1266,96 @@ function deleteEntry(uid){
 }
 
 /* ---------- log / stats ---------- */
+let logShowN=20;                 // grouped rows shown before "Load more"
+const openGroups=new Set();      // which employee groups are expanded (persists across live syncs)
+function hhmm(ts){return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
+function populateLogFilters(){
+  const es=$('fltEmp'); if(es){const cur=es.value; es.innerHTML='<option value="">All employees</option>'+roster.map(r=>`<option value="${r.key}">${esc(r.name)}</option>`).join(''); es.value=cur;}
+  const ss=$('fltSite'); if(ss){const cur=ss.value; ss.innerHTML='<option value="">All sites</option>'+sites.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join(''); ss.value=cur;}
+}
+function filteredLog(){
+  const range=($('fltRange')&&$('fltRange').value)||'today';
+  const emp=($('fltEmp')&&$('fltEmp').value)||'';
+  const site=($('fltSite')&&$('fltSite').value)||'';
+  const q=(($('fltSearch')&&$('fltSearch').value)||'').trim().toLowerCase();
+  let from=-Infinity,to=Infinity;
+  if(range==='today'){from=startOfDay(Date.now());to=from+86400000;}
+  else if(range==='week'){from=startOfWeek(Date.now());to=from+7*86400000;}
+  else if(range==='date'){const dv=$('fltDate')&&$('fltDate').value; if(dv){const d=new Date(dv+'T00:00');from=d.getTime();to=from+86400000;}}
+  return log.filter(e=>{
+    if(e.ts<from||e.ts>=to)return false;
+    if(emp&&e.id!==emp)return false;
+    if(site&&(e.site||'')!==site)return false;
+    if(q&&!(e.name||'').toLowerCase().includes(q))return false;
+    return true;
+  });
+}
+// one punch rendered as a compact line inside an expanded employee group
+function punchLine(e){
+  const badgeCls=e.action==='ABSENT'?'OUT':e.action;
+  const parts=[];
+  if(e.action==='OUT'&&e.shiftHours!=null){ parts.push(e.shiftHours.toFixed(2)+' h'); if(e.adjTs!=null&&e.adjTs!==e.ts)parts.push('ends '+hhmm(e.adjTs)); }
+  if(e.action==='IN'&&e.adjTs!=null&&e.adjTs!==e.ts) parts.push('counts from '+hhmm(e.adjTs));
+  if(e.site) parts.push('📍 '+esc(e.site));
+  if(e.permitBy) parts.push('by '+esc(e.permitBy));
+  let chip='';
+  if(e.action==='OUT'&&e.shiftHours!=null){ const fl=e.flag||''; const cls=fl==='SHORT'?'fl-short':fl==='OVERTIME-APPROVED'?'fl-ot':fl==='NO-MATCHING-IN'?'fl-na':'fl-ok'; const lbl=fl==='SHORT'?'Below min':fl==='OVERTIME-APPROVED'?'OT approved':fl==='NO-MATCHING-IN'?'No IN':'OK'; chip=` <span class="flag ${cls}">${lbl}</span>`; }
+  if(e.action==='ABSENT') chip=' <span class="flag fl-short">No clock-out</span>';
+  const mflag=e.manual?' <span class="flag fl-na">manual</span>':'';
+  return `<div class="punch">
+    <span class="badge ${badgeCls}">${e.action}</span>
+    <div class="pinfo"><div>${hhmm(e.ts)} <span class="muted">${new Date(e.ts).toLocaleDateString()}</span>${chip}${mflag}</div>
+      ${parts.length?`<div class="psub">${parts.join(' · ')}</div>`:''}</div>
+    <span class="pacts"><button class="btn ghost sm" onclick="editEntry('${e.uid}')">✎</button><button class="btn danger sm" onclick="deleteEntry('${e.uid}')">🗑</button></span>
+  </div>`;
+}
+function toggleGroup(id){
+  if(openGroups.has(id))openGroups.delete(id); else openGroups.add(id);
+  const el=$('eg_'+id);
+  if(el){ el.style.display=openGroups.has(id)?'':'none';
+    const c=el.previousElementSibling&&el.previousElementSibling.querySelector('.caret'); if(c)c.textContent=openGroups.has(id)?'▾':'▸'; }
+}
 function renderLog(){
-  const el=$('logBody');
-  if(log.length===0){el.innerHTML='<div class="empty">No records yet.</div>';}
+  populateLogFilters();
+  if($('fltRange')&&$('fltDate')) $('fltDate').style.display=$('fltRange').value==='date'?'':'none';
+  const el=$('logBody'), rows=filteredLog();
+  // group by employee
+  const groups={};
+  rows.forEach(e=>{(groups[e.id]=groups[e.id]||{name:e.name,id:e.id,items:[]}).items.push(e);});
+  let arr=Object.values(groups);
+  arr.forEach(g=>{ g.hours=totalHours(g.items); g.inNow=!!openIn(g.id); });
+  arr.sort((a,b)=>(b.inNow-a.inNow)||a.name.localeCompare(b.name)); // currently-in first, then A→Z
+  if($('logCount')) $('logCount').textContent = rows.length? (arr.length+' employee'+(arr.length>1?'s':'')+' · '+rows.length+' punch'+(rows.length>1?'es':'')) : '';
+  if(arr.length===0){ el.innerHTML='<div class="empty">No records for this filter.</div>'; }
   else{
-    el.innerHTML='<table><thead><tr><th>Time</th><th>Employee</th><th>Action</th><th>Shift / Status</th><th>Edit</th></tr></thead><tbody>'+
-      log.slice(0,200).map(e=>{
-        const d=new Date(e.ts);
-        let info='';
-        if(e.action==='IN'&&e.adjTs!=null&&e.adjTs!==e.ts){
-          info=`<span class="muted">start → ${new Date(e.adjTs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>`;
-        }
-        if(e.action==='OUT'&&e.shiftHours!=null){
-          const fl=e.flag||'';
-          const cls=fl==='SHORT'?'fl-short':fl==='OVERTIME-APPROVED'?'fl-ot':fl==='NO-MATCHING-IN'?'fl-na':'fl-ok';
-          const lbl=fl==='SHORT'?'Below min':fl==='OVERTIME-APPROVED'?'OT approved':fl==='NO-MATCHING-IN'?'No IN':'OK';
-          const endNote=(e.adjTs!=null&&e.adjTs!==e.ts)?` <span class="muted">(ends ${new Date(e.adjTs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})})</span>`:'';
-          info=`${e.shiftHours.toFixed(2)} h${endNote} <span class="flag ${cls}">${lbl}</span>`+
-               (e.permitBy?`<br><span class="muted">by ${esc(e.permitBy)}${e.permitReason?' · '+esc(e.permitReason):''}</span>`:'');
-        }
-        if(e.action==='ABSENT'){ info='<span class="flag fl-short">No clock-out</span>'; }
-        const mflag=e.manual?' <span class="flag fl-na">manual</span>':'';
-        const siteNote=e.site?`<br><span class="muted">📍 ${esc(e.site)}</span>`:'';
-        const badgeCls=e.action==='ABSENT'?'OUT':e.action;
-        const acts=`<button class="btn ghost sm" onclick="editEntry('${e.uid}')">✎</button> <button class="btn danger sm" onclick="deleteEntry('${e.uid}')">🗑</button>`;
-        return `<tr><td data-label="Time">${d.toLocaleDateString()}<br><span class="muted">${d.toLocaleTimeString()}</span></td>
-          <td data-label="Employee">${esc(e.name)}${siteNote}</td><td data-label="Action"><span class="badge ${badgeCls}">${e.action}</span>${mflag}</td><td data-label="Shift / Status">${info}</td><td data-label="Edit" class="acts-cell" style="white-space:nowrap">${acts}</td></tr>`;
-      }).join('')+'</tbody></table>';
+    const shown=arr.slice(0,logShowN);
+    el.innerHTML=shown.map(g=>{
+      const open=openGroups.has(g.id);
+      const detail=[...g.items].sort((a,b)=>b.ts-a.ts).map(punchLine).join('');
+      const status=g.inNow?'<span class="badge IN">IN now</span>':'<span class="badge OUT">OUT</span>';
+      return `<div class="emp-group">
+        <div class="emp-head" onclick="toggleGroup('${g.id}')">
+          <span class="caret">${open?'▾':'▸'}</span>
+          <div class="egn">${esc(g.name)}</div>
+          ${status}
+          <span class="eg-meta">${g.items.length} · ${g.hours.toFixed(1)} h</span>
+        </div>
+        <div class="emp-detail" id="eg_${g.id}" style="display:${open?'':'none'}">${detail}</div>
+      </div>`;
+    }).join('') + (arr.length>logShowN?`<button class="btn ghost" id="logMoreBtn" style="width:100%;margin-top:8px">Load more (${arr.length-logShowN} more)</button>`:'');
+    const mb=$('logMoreBtn'); if(mb)mb.onclick=()=>{logShowN+=20;renderLog();};
   }
-  // stats today
+  // stats row: always TODAY, independent of the filter above
   const today=new Date().toDateString();
   const todays=log.filter(e=>new Date(e.ts).toDateString()===today);
-  // currently in = per person last action today is IN
-  const last={};
-  [...todays].reverse().forEach(e=>last[e.id]=e.action);
+  const last={}; [...todays].reverse().forEach(e=>last[e.id]=e.action);
   $('statIn').textContent=Object.values(last).filter(a=>a==='IN').length;
   $('statOut').textContent=Object.values(last).filter(a=>a==='OUT').length;
   $('statHours').textContent=totalHours(todays).toFixed(1);
 }
+// filter controls -> re-render (attached once; the elements are static in the admin card)
+['fltRange','fltDate','fltEmp','fltSite'].forEach(id=>{ const el=$(id); if(el)el.onchange=()=>{logShowN=20;renderLog();}; });
+if($('fltSearch')) $('fltSearch').oninput=()=>{logShowN=20;renderLog();};
 function totalHours(entries){
   // pair IN->OUT per employee chronologically
   const byEmp={};
