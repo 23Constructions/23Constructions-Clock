@@ -117,6 +117,20 @@
   .site-pin .pin.on{background:var(--in)} .site-pin .pin.off{background:#64748b}
   .leaflet-tooltip{background:var(--charcoal);color:#fff;border:1px solid var(--charcoal);border-radius:6px;font-size:.8rem}
   .leaflet-tooltip-top:before{border-top-color:var(--charcoal)}
+  /* On narrow phones, stack each record into a tidy card instead of a cramped 5-column table */
+  @media (max-width:560px){
+    #logBody thead, #foremanLog thead{display:none}
+    #logBody table, #logBody tbody, #logBody tr, #logBody td,
+    #foremanLog table, #foremanLog tbody, #foremanLog tr, #foremanLog td{display:block;width:100%}
+    #logBody tr, #foremanLog tr{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--card2)}
+    #logBody td, #foremanLog td{border:0;border-bottom:1px dashed var(--line);padding:6px 0}
+    #logBody td:last-child, #foremanLog td:last-child{border-bottom:0}
+    #logBody td:before, #foremanLog td:before{content:attr(data-label);display:block;color:var(--muted);
+      font-weight:700;font-size:.64rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+    #logBody td[data-label="Edit"]{display:flex;align-items:center;gap:10px;padding-top:10px}
+    #logBody td[data-label="Edit"]:before{margin:0}
+    #logBody td[data-label="Edit"] .btn.sm{padding:9px 18px;font-size:1rem}
+  }
 </style>
 </head>
 <body>
@@ -453,11 +467,11 @@ function renderForemanLog(){
         const actCls=e.action==='ABSENT'?'OUT':e.action;
         const hrs=(e.action==='OUT'&&e.shiftHours!=null)?e.shiftHours.toFixed(2)+' h':(e.action==='ABSENT'?'—':'');
         const geoTag=e.geoAuto?' <span class="flag fl-na">auto</span>':'';
-        return `<tr><td>${d.toLocaleDateString()}<br><span class="muted">${d.toLocaleTimeString()}</span></td>
-          <td>${esc(e.name)}</td>
-          <td><span class="badge ${actCls}">${e.action}</span>${geoTag}</td>
-          <td>${e.site?'📍 '+esc(e.site):'<span class="muted">—</span>'}</td>
-          <td>${hrs}</td></tr>`;
+        return `<tr><td data-label="Time">${d.toLocaleDateString()}<br><span class="muted">${d.toLocaleTimeString()}</span></td>
+          <td data-label="Employee">${esc(e.name)}</td>
+          <td data-label="Action"><span class="badge ${actCls}">${e.action}</span>${geoTag}</td>
+          <td data-label="Site">${e.site?'📍 '+esc(e.site):'<span class="muted">—</span>'}</td>
+          <td data-label="Shift">${hrs}</td></tr>`;
       }).join('')+'</tbody></table>';
   }
   // today stats
@@ -1248,8 +1262,8 @@ function renderLog(){
         const siteNote=e.site?`<br><span class="muted">📍 ${esc(e.site)}</span>`:'';
         const badgeCls=e.action==='ABSENT'?'OUT':e.action;
         const acts=`<button class="btn ghost sm" onclick="editEntry('${e.uid}')">✎</button> <button class="btn danger sm" onclick="deleteEntry('${e.uid}')">🗑</button>`;
-        return `<tr><td>${d.toLocaleDateString()}<br><span class="muted">${d.toLocaleTimeString()}</span></td>
-          <td>${esc(e.name)}${siteNote}</td><td><span class="badge ${badgeCls}">${e.action}</span>${mflag}</td><td>${info}</td><td style="white-space:nowrap">${acts}</td></tr>`;
+        return `<tr><td data-label="Time">${d.toLocaleDateString()}<br><span class="muted">${d.toLocaleTimeString()}</span></td>
+          <td data-label="Employee">${esc(e.name)}${siteNote}</td><td data-label="Action"><span class="badge ${badgeCls}">${e.action}</span>${mflag}</td><td data-label="Shift / Status">${info}</td><td data-label="Edit" class="acts-cell" style="white-space:nowrap">${acts}</td></tr>`;
       }).join('')+'</tbody></table>';
   }
   // stats today
