@@ -239,7 +239,7 @@
       </div>
       <div class="card">
         <strong>Manual clock-in / out</strong>
-        <div class="muted" style="font-size:.82rem;margin:4px 0 12px">For staff without a phone. Same rules apply (6:00 start, round-up in / round-down out, overtime approval).</div>
+        <div class="muted" style="font-size:.82rem;margin:4px 0 12px">For staff without a phone. Same rules apply (6:00 start, times rounded to nearest 15 min, overtime approval).</div>
         <label>Employee<select id="manEmp"></select></label>
         <label>Job site<select id="manSite"></select></label>
         <label>Action<select id="manAction"><option value="IN">Clock IN</option><option value="OUT">Clock OUT</option></select></label>
@@ -994,25 +994,27 @@ function handleTag(serial){
   doAction();
 }
 
+// Round a time to the NEAREST 15-minute mark (e.g. 6:07 -> 6:00, 6:08 -> 6:15, 1:50 -> 1:45).
+function roundNearest(ts){
+  const x=new Date(ts);
+  x.setSeconds(0,0);
+  const rem=x.getMinutes()%ROUND_MIN;
+  if(rem<ROUND_MIN/2) x.setMinutes(x.getMinutes()-rem);            // closer to the earlier mark
+  else                x.setMinutes(x.getMinutes()+(ROUND_MIN-rem)); // closer to the later mark
+  return x.getTime();
+}
 // Normalize a clock-in time:
 //  - before 6:00 -> 6:00 (workday floor)
-//  - 6:00 or later -> rounded UP to the next 15-minute mark (6:10 -> 6:15)
+//  - 6:00 or later -> rounded to the NEAREST 15-minute mark
 function adjustStart(ts){
   const d=new Date(ts);
   const floor=new Date(d); floor.setHours(DAY_START_H,0,0,0);
   if(d.getTime()<=floor.getTime()) return floor.getTime();
-  const x=new Date(d);
-  if(x.getSeconds()>0||x.getMilliseconds()>0){x.setSeconds(0,0);x.setMinutes(x.getMinutes()+1);}
-  const rem=x.getMinutes()%ROUND_MIN;
-  if(rem!==0) x.setMinutes(x.getMinutes()+(ROUND_MIN-rem));
-  x.setSeconds(0,0);
-  return x.getTime();
+  return roundNearest(d.getTime());
 }
-// Normalize a clock-out time: round DOWN to the previous 15-minute mark (1:50 -> 1:45)
+// Normalize a clock-out time: round to the NEAREST 15-minute mark
 function adjustEnd(ts){
-  const x=new Date(ts);
-  x.setMinutes(x.getMinutes()-(x.getMinutes()%ROUND_MIN),0,0);
-  return x.getTime();
+  return roundNearest(ts);
 }
 // effective time used for hours: adjusted time if present, else raw
 function startTs(e){return e.adjTs!=null?e.adjTs:e.ts;}
@@ -1091,11 +1093,11 @@ function recordAt(name,id,action,now,manual,unknown,site,geoAuto){
   const statusEl=manual?'adminStatus':'status';
 
   if(action==='IN'){
-    adjTs=adjustStart(now);     // round UP to next 15 min, floor 6:00
+    adjTs=adjustStart(now);     // round to nearest 15 min, floor 6:00
   }
 
   if(action==='OUT'){
-    adjTs=adjustEnd(now);       // round DOWN to previous 15 min
+    adjTs=adjustEnd(now);       // round to nearest 15 min
     const inEntry=openIn(id);
     if(inEntry){
       shiftHours=(adjTs-startTs(inEntry))/3600000;
