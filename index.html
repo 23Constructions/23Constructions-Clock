@@ -219,7 +219,20 @@
         <div class="row" style="margin-bottom:12px">
           <button class="btn ghost" id="fExportBtn">⬇ Export CSV</button>
         </div>
-        <div class="muted" style="font-size:.78rem;margin-bottom:8px">Read-only: clock-in/out times and site for every employee. Updates live.</div>
+        <div class="muted" style="font-size:.78rem;margin-bottom:8px">Read-only review · grouped by employee, tap a name to expand. Updates live.</div>
+        <div class="log-filters">
+          <select id="ffltRange">
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="date">On a date…</option>
+            <option value="all">All time</option>
+          </select>
+          <input type="date" id="ffltDate" style="display:none">
+          <select id="ffltEmp"><option value="">All employees</option></select>
+          <select id="ffltSite"><option value="">All sites</option></select>
+          <input type="search" id="ffltSearch" placeholder="🔍 Search name…">
+        </div>
+        <div class="muted" id="fLogCount" style="font-size:.78rem;margin-bottom:8px"></div>
         <div id="foremanLog"></div>
       </div>
     </div>
@@ -486,22 +499,7 @@ function renderForeman(){
   renderSiteMap('foreman');
 }
 function renderForemanLog(){
-  const el=$('foremanLog');
-  if(log.length===0){el.innerHTML='<div class="empty">No records yet.</div>';}
-  else{
-    el.innerHTML='<table><thead><tr><th>Time</th><th>Employee</th><th>Action</th><th>Site</th><th>Shift</th></tr></thead><tbody>'+
-      log.slice(0,300).map(e=>{
-        const d=new Date(e.ts);
-        const actCls=e.action==='ABSENT'?'OUT':e.action;
-        const hrs=(e.action==='OUT'&&e.shiftHours!=null)?e.shiftHours.toFixed(2)+' h':(e.action==='ABSENT'?'—':'');
-        const geoTag=e.geoAuto?' <span class="flag fl-na">auto</span>':'';
-        return `<tr><td data-label="Time">${d.toLocaleDateString()}<br><span class="muted">${d.toLocaleTimeString()}</span></td>
-          <td data-label="Employee">${esc(e.name)}</td>
-          <td data-label="Action"><span class="badge ${actCls}">${e.action}</span>${geoTag}</td>
-          <td data-label="Site">${e.site?'📍 '+esc(e.site):'<span class="muted">—</span>'}</td>
-          <td data-label="Shift">${hrs}</td></tr>`;
-      }).join('')+'</tbody></table>';
-  }
+  renderGroupedLog('fflt','foremanLog','fLogCount',true);   // read-only (no edit/delete)
   // today stats
   const today=new Date().toDateString();
   const todays=log.filter(e=>new Date(e.ts).toDateString()===today);
@@ -1265,23 +1263,23 @@ function deleteEntry(uid){
   showStatus('ok','Record deleted',e.name+' · '+e.action,'adminStatus');
 }
 
-/* ---------- log / stats ---------- */
-let logShowN=20;                 // grouped rows shown before "Load more"
-const openGroups=new Set();      // which employee groups are expanded (persists across live syncs)
+/* ---------- log / stats (grouped + filtered — shared by Admin & Foreman) ---------- */
+const logShowN={flt:20, fflt:20};                 // rows shown before "Load more", per view
+const openGroups={flt:new Set(), fflt:new Set()}; // expanded employee groups, per view
 function hhmm(ts){return new Date(ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
-function populateLogFilters(){
-  const es=$('fltEmp'); if(es){const cur=es.value; es.innerHTML='<option value="">All employees</option>'+roster.map(r=>`<option value="${r.key}">${esc(r.name)}</option>`).join(''); es.value=cur;}
-  const ss=$('fltSite'); if(ss){const cur=ss.value; ss.innerHTML='<option value="">All sites</option>'+sites.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join(''); ss.value=cur;}
+function populateLogFilters(P){
+  const es=$(P+'Emp'); if(es){const cur=es.value; es.innerHTML='<option value="">All employees</option>'+roster.map(r=>`<option value="${r.key}">${esc(r.name)}</option>`).join(''); es.value=cur;}
+  const ss=$(P+'Site'); if(ss){const cur=ss.value; ss.innerHTML='<option value="">All sites</option>'+sites.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join(''); ss.value=cur;}
 }
-function filteredLog(){
-  const range=($('fltRange')&&$('fltRange').value)||'today';
-  const emp=($('fltEmp')&&$('fltEmp').value)||'';
-  const site=($('fltSite')&&$('fltSite').value)||'';
-  const q=(($('fltSearch')&&$('fltSearch').value)||'').trim().toLowerCase();
+function filteredLog(P){
+  const range=($(P+'Range')&&$(P+'Range').value)||'today';
+  const emp=($(P+'Emp')&&$(P+'Emp').value)||'';
+  const site=($(P+'Site')&&$(P+'Site').value)||'';
+  const q=(($(P+'Search')&&$(P+'Search').value)||'').trim().toLowerCase();
   let from=-Infinity,to=Infinity;
   if(range==='today'){from=startOfDay(Date.now());to=from+86400000;}
   else if(range==='week'){from=startOfWeek(Date.now());to=from+7*86400000;}
-  else if(range==='date'){const dv=$('fltDate')&&$('fltDate').value; if(dv){const d=new Date(dv+'T00:00');from=d.getTime();to=from+86400000;}}
+  else if(range==='date'){const dv=$(P+'Date')&&$(P+'Date').value; if(dv){const d=new Date(dv+'T00:00');from=d.getTime();to=from+86400000;}}
   return log.filter(e=>{
     if(e.ts<from||e.ts>=to)return false;
     if(emp&&e.id!==emp)return false;
@@ -1290,8 +1288,8 @@ function filteredLog(){
     return true;
   });
 }
-// one punch rendered as a compact line inside an expanded employee group
-function punchLine(e){
+// one punch as a compact line inside an expanded group. readonly=true hides edit/delete (Foreman).
+function punchLine(e, readonly){
   const badgeCls=e.action==='ABSENT'?'OUT':e.action;
   const parts=[];
   if(e.action==='OUT'&&e.shiftHours!=null){ parts.push(e.shiftHours.toFixed(2)+' h'); if(e.adjTs!=null&&e.adjTs!==e.ts)parts.push('ends '+hhmm(e.adjTs)); }
@@ -1301,50 +1299,56 @@ function punchLine(e){
   let chip='';
   if(e.action==='OUT'&&e.shiftHours!=null){ const fl=e.flag||''; const cls=fl==='SHORT'?'fl-short':fl==='OVERTIME-APPROVED'?'fl-ot':fl==='NO-MATCHING-IN'?'fl-na':'fl-ok'; const lbl=fl==='SHORT'?'Below min':fl==='OVERTIME-APPROVED'?'OT approved':fl==='NO-MATCHING-IN'?'No IN':'OK'; chip=` <span class="flag ${cls}">${lbl}</span>`; }
   if(e.action==='ABSENT') chip=' <span class="flag fl-short">No clock-out</span>';
+  if(e.geoAuto) chip+=' <span class="flag fl-na">auto</span>';
   const mflag=e.manual?' <span class="flag fl-na">manual</span>':'';
+  const acts=readonly?'':`<span class="pacts"><button class="btn ghost sm" onclick="editEntry('${e.uid}')">✎</button><button class="btn danger sm" onclick="deleteEntry('${e.uid}')">🗑</button></span>`;
   return `<div class="punch">
     <span class="badge ${badgeCls}">${e.action}</span>
     <div class="pinfo"><div>${hhmm(e.ts)} <span class="muted">${new Date(e.ts).toLocaleDateString()}</span>${chip}${mflag}</div>
       ${parts.length?`<div class="psub">${parts.join(' · ')}</div>`:''}</div>
-    <span class="pacts"><button class="btn ghost sm" onclick="editEntry('${e.uid}')">✎</button><button class="btn danger sm" onclick="deleteEntry('${e.uid}')">🗑</button></span>
+    ${acts}
   </div>`;
 }
-function toggleGroup(id){
-  if(openGroups.has(id))openGroups.delete(id); else openGroups.add(id);
-  const el=$('eg_'+id);
-  if(el){ el.style.display=openGroups.has(id)?'':'none';
-    const c=el.previousElementSibling&&el.previousElementSibling.querySelector('.caret'); if(c)c.textContent=openGroups.has(id)?'▾':'▸'; }
+function toggleGroup(P, id){
+  const oset=openGroups[P]; if(!oset)return;
+  if(oset.has(id))oset.delete(id); else oset.add(id);
+  const el=$('eg_'+P+'_'+id);
+  if(el){ el.style.display=oset.has(id)?'':'none';
+    const c=el.previousElementSibling&&el.previousElementSibling.querySelector('.caret'); if(c)c.textContent=oset.has(id)?'▾':'▸'; }
 }
-function renderLog(){
-  populateLogFilters();
-  if($('fltRange')&&$('fltDate')) $('fltDate').style.display=$('fltRange').value==='date'?'':'none';
-  const el=$('logBody'), rows=filteredLog();
-  // group by employee
+// core grouped/filtered renderer, used by both Admin (#logBody) and Foreman (#foremanLog)
+function renderGroupedLog(P, bodyId, countId, readonly){
+  const el=$(bodyId); if(!el)return;
+  populateLogFilters(P);
+  if($(P+'Range')&&$(P+'Date')) $(P+'Date').style.display=$(P+'Range').value==='date'?'':'none';
+  const rows=filteredLog(P);
   const groups={};
   rows.forEach(e=>{(groups[e.id]=groups[e.id]||{name:e.name,id:e.id,items:[]}).items.push(e);});
   let arr=Object.values(groups);
   arr.forEach(g=>{ g.hours=totalHours(g.items); g.inNow=!!openIn(g.id); });
   arr.sort((a,b)=>(b.inNow-a.inNow)||a.name.localeCompare(b.name)); // currently-in first, then A→Z
-  if($('logCount')) $('logCount').textContent = rows.length? (arr.length+' employee'+(arr.length>1?'s':'')+' · '+rows.length+' punch'+(rows.length>1?'es':'')) : '';
-  if(arr.length===0){ el.innerHTML='<div class="empty">No records for this filter.</div>'; }
-  else{
-    const shown=arr.slice(0,logShowN);
-    el.innerHTML=shown.map(g=>{
-      const open=openGroups.has(g.id);
-      const detail=[...g.items].sort((a,b)=>b.ts-a.ts).map(punchLine).join('');
-      const status=g.inNow?'<span class="badge IN">IN now</span>':'<span class="badge OUT">OUT</span>';
-      return `<div class="emp-group">
-        <div class="emp-head" onclick="toggleGroup('${g.id}')">
-          <span class="caret">${open?'▾':'▸'}</span>
-          <div class="egn">${esc(g.name)}</div>
-          ${status}
-          <span class="eg-meta">${g.items.length} · ${g.hours.toFixed(1)} h</span>
-        </div>
-        <div class="emp-detail" id="eg_${g.id}" style="display:${open?'':'none'}">${detail}</div>
-      </div>`;
-    }).join('') + (arr.length>logShowN?`<button class="btn ghost" id="logMoreBtn" style="width:100%;margin-top:8px">Load more (${arr.length-logShowN} more)</button>`:'');
-    const mb=$('logMoreBtn'); if(mb)mb.onclick=()=>{logShowN+=20;renderLog();};
-  }
+  if($(countId)) $(countId).textContent = rows.length? (arr.length+' employee'+(arr.length>1?'s':'')+' · '+rows.length+' punch'+(rows.length>1?'es':'')) : '';
+  const oset=openGroups[P];
+  if(arr.length===0){ el.innerHTML='<div class="empty">No records for this filter.</div>'; return; }
+  const shown=arr.slice(0,logShowN[P]);
+  el.innerHTML=shown.map(g=>{
+    const open=oset.has(g.id);
+    const detail=[...g.items].sort((a,b)=>b.ts-a.ts).map(e=>punchLine(e,readonly)).join('');
+    const status=g.inNow?'<span class="badge IN">IN now</span>':'<span class="badge OUT">OUT</span>';
+    return `<div class="emp-group">
+      <div class="emp-head" onclick="toggleGroup('${P}','${g.id}')">
+        <span class="caret">${open?'▾':'▸'}</span>
+        <div class="egn">${esc(g.name)}</div>
+        ${status}
+        <span class="eg-meta">${g.items.length} · ${g.hours.toFixed(1)} h</span>
+      </div>
+      <div class="emp-detail" id="eg_${P}_${g.id}" style="display:${open?'':'none'}">${detail}</div>
+    </div>`;
+  }).join('') + (arr.length>logShowN[P]?`<button class="btn ghost" id="${bodyId}_more" style="width:100%;margin-top:8px">Load more (${arr.length-logShowN[P]} more)</button>`:'');
+  const mb=$(bodyId+'_more'); if(mb)mb.onclick=()=>{logShowN[P]+=20; renderGroupedLog(P,bodyId,countId,readonly);};
+}
+function renderLog(){
+  renderGroupedLog('flt','logBody','logCount',false);
   // stats row: always TODAY, independent of the filter above
   const today=new Date().toDateString();
   const todays=log.filter(e=>new Date(e.ts).toDateString()===today);
@@ -1353,9 +1357,12 @@ function renderLog(){
   $('statOut').textContent=Object.values(last).filter(a=>a==='OUT').length;
   $('statHours').textContent=totalHours(todays).toFixed(1);
 }
-// filter controls -> re-render (attached once; the elements are static in the admin card)
-['fltRange','fltDate','fltEmp','fltSite'].forEach(id=>{ const el=$(id); if(el)el.onchange=()=>{logShowN=20;renderLog();}; });
-if($('fltSearch')) $('fltSearch').oninput=()=>{logShowN=20;renderLog();};
+// filter controls -> re-render (attached once; elements are static in each card)
+[['flt','logBody','logCount',false],['fflt','foremanLog','fLogCount',true]].forEach(function(cfg){
+  const P=cfg[0];
+  ['Range','Date','Emp','Site'].forEach(function(s){ const el=$(P+s); if(el)el.onchange=function(){logShowN[P]=20; renderGroupedLog(cfg[0],cfg[1],cfg[2],cfg[3]);}; });
+  const se=$(P+'Search'); if(se)se.oninput=function(){logShowN[P]=20; renderGroupedLog(cfg[0],cfg[1],cfg[2],cfg[3]);};
+});
 function totalHours(entries){
   // pair IN->OUT per employee chronologically
   const byEmp={};
