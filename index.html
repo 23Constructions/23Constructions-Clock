@@ -121,19 +121,7 @@
 </head>
 <body>
 <header>
-  <h1><svg class="brand" viewBox="200 228 712 908" height="40" aria-label="23 CONS" style="flex:0 0 auto">
-      <g fill="none" stroke="#FF6A1A" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M 455 250 L 740 250 C 832 250 882 332 882 432 C 882 545 812 618 700 626 C 815 636 888 722 888 845 C 888 1002 772 1108 648 1100"/>
-        <path d="M 420 250 C 360 250 300 295 270 360 C 245 415 235 470 235 520 L 235 540 L 400 540 L 400 360 M 460 300 C 540 360 560 470 470 600 C 360 760 270 880 225 1000 L 225 1095 L 615 1095"/>
-      </g>
-      <path d="M 430 1085 L 430 905 L 480 855 L 555 855 L 555 1085" fill="none" stroke="#FF6A1A" stroke-width="14" stroke-linejoin="round"/>
-      <g stroke="#FF6A1A" stroke-width="14">
-        <line x1="600" y1="1085" x2="600" y2="785"/>
-        <line x1="640" y1="1085" x2="640" y2="818"/>
-        <line x1="680" y1="1085" x2="680" y2="852"/>
-        <line x1="720" y1="1085" x2="720" y2="886"/>
-      </g>
-    </svg><span class="dot" id="liveDot"></span>23Constructions Clock</h1>
+  <h1><span class="dot" id="liveDot"></span>23Constructions Clock</h1>
   <span class="muted" id="clock"></span>
 </header>
 <main>
@@ -1338,11 +1326,26 @@ $('saveSheetUrlBtn').onclick=()=>{
 function postToSheets(rows,btn){
   if(!sheetUrl){ alert('No Google Sheet connected yet. Paste your Apps Script Web App URL in the "Google Sheets sync" card and Save.'); return; }
   const label=btn?btn.textContent:''; if(btn){btn.disabled=true;btn.textContent='Sending…';}
-  fetch(sheetUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},
+  // Real (CORS) request so we can READ the Apps Script response and report success/failure.
+  // text/plain avoids a CORS preflight; a correctly-deployed "Anyone" web app returns Access-Control-Allow-Origin:*.
+  fetch(sheetUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},redirect:'follow',
     body:JSON.stringify({header:SHEET_HEAD,records:rows})})
-    .then(()=>{ setSheetMsg('✓ Sent '+rows.length+' record(s) to Google Sheets at '+new Date().toLocaleTimeString()+'. Open your sheet to confirm.');
-                showStatus('ok','Sent to Google Sheets',rows.length+' record(s) pushed. Check your sheet.'); })
-    .catch(err=>{ setSheetMsg('✗ Failed: '+err); alert('Could not reach Google Sheets. Check the URL and that the Web App is deployed to "Anyone".'); })
+    .then(r=>r.text())
+    .then(txt=>{
+      let ok=false, count=rows.length;
+      try{ const j=JSON.parse(txt); ok=!!j.ok; if(j.count!=null)count=j.count; }catch(e){ ok=/"?ok"?\s*:\s*true/i.test(txt); }
+      if(ok){
+        setSheetMsg('✓ Synced '+count+' record(s) to Google Sheets at '+new Date().toLocaleTimeString()+'.');
+        showStatus('ok','Synced to Google Sheets',count+' record(s) written to your sheet.');
+      } else {
+        setSheetMsg('✗ The sheet replied but did not confirm the write. Reply: '+(txt||'(empty)').slice(0,140));
+        alert('Google Sheets received the request but did not confirm it wrote.\n\nUsually this means the Apps Script was edited but a NEW version wasn\'t deployed. In Apps Script: Deploy → Manage deployments → Edit → Version: New version → Deploy.');
+      }
+    })
+    .catch(err=>{
+      setSheetMsg('✗ Could not reach the sheet ('+err+'). Check the Web App is deployed with access "Anyone".');
+      alert('Could not reach Google Sheets ('+err+').\n\nMost likely the Apps Script Web App access is not set to "Anyone", or the URL is not the /exec deployment URL. Re-check the setup steps.');
+    })
     .finally(()=>{ if(btn){btn.disabled=false;btn.textContent=label;} });
 }
 $('sheetsBtn').onclick=function(){
