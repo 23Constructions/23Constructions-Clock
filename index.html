@@ -6,6 +6,8 @@
 <title>23Constructions Clock</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <style>
   :root{
     --bg:#0f172a; --card:#1e293b; --card2:#273549; --line:#334155;
@@ -98,6 +100,19 @@
   .lock-card{text-align:center}
   .lock-card .lk{font-size:2rem}
   .lock-card input{max-width:220px;margin:10px auto 0;text-align:center;letter-spacing:.3em}
+  .sitemap{height:300px;border-radius:10px;margin-top:10px;overflow:hidden;background:var(--card2);z-index:0}
+  .sitemap .leaflet-container{background:var(--card2);font-family:inherit}
+  .map-list{margin-top:12px;font-size:.88rem}
+  .map-list .mi{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid var(--line)}
+  .map-list .mi:last-child{border-bottom:0}
+  .map-list .cnt{font-weight:700;white-space:nowrap}
+  .map-list .cnt.on{color:var(--in)} .map-list .cnt.off{color:var(--muted)}
+  .site-pin{background:none;border:0}
+  .site-pin .pin{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:.95rem;color:#fff;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+  .site-pin .pin.on{background:var(--in)} .site-pin .pin.off{background:#64748b}
+  .leaflet-tooltip{background:#0f172a;color:#e2e8f0;border:1px solid var(--line);border-radius:6px;font-size:.8rem}
+  .leaflet-tooltip-top:before{border-top-color:var(--line)}
 </style>
 </head>
 <body>
@@ -153,6 +168,12 @@
     <div class="card lock-card" id="foremanLock"></div>
     <div id="foremanBody" style="display:none">
       <div class="card">
+        <strong>Who's on site now</strong>
+        <div class="muted" style="font-size:.8rem;margin:4px 0 2px">Live headcount of employees currently clocked in at each job site. Tap a pin for names.</div>
+        <div id="map_foreman" class="sitemap"></div>
+        <div id="mapList_foreman" class="map-list"></div>
+      </div>
+      <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <strong>All employee records — review</strong>
           <button class="btn ghost sm" id="fLockBtn" style="flex:0 0 auto">Lock</button>
@@ -175,6 +196,12 @@
   <section class="panel" id="tab-admin">
     <div class="card lock-card" id="adminLock"></div>
     <div id="adminBody" style="display:none">
+      <div class="card">
+        <strong>Who's on site now</strong>
+        <div class="muted" style="font-size:.8rem;margin:4px 0 2px">Live headcount of employees currently clocked in at each job site. Tap a pin for names.</div>
+        <div id="map_admin" class="sitemap"></div>
+        <div id="mapList_admin" class="map-list"></div>
+      </div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <strong>All records</strong>
@@ -410,6 +437,7 @@ function renderForeman(){
   }
   $('foremanLock').style.display='none';$('foremanBody').style.display='';
   renderForemanLog();
+  renderSiteMap('foreman');
 }
 function renderForemanLog(){
   const el=$('foremanLog');
@@ -460,6 +488,7 @@ function renderAdmin(){
     : 'This phone is not registered yet.';
   if($('sheetUrlInput'))$('sheetUrlInput').value=sheetUrl;
   renderLog();renderRoster();renderManualEmployees();renderSites();
+  renderSiteMap('admin');
 }
 
 /* ---------- device owner (one person per phone) ---------- */
@@ -996,6 +1025,61 @@ function openIn(id){
     if(e.action==='IN')return e;
   }
   return null;
+}
+
+/* ---------- live "who's on site" map (Foreman + Admin) ---------- */
+// currently clocked-in people grouped by job-site name
+function siteOccupancy(){
+  const seen={}, bySite={};
+  for(const e of log){ // newest first
+    if(e.action!=='IN'&&e.action!=='OUT')continue;
+    if(seen[e.id])continue; seen[e.id]=true;
+    if(e.action==='IN'){ const s=e.site||'(no site)'; (bySite[s]=bySite[s]||[]).push(e.name); }
+  }
+  return bySite;
+}
+let siteMaps={}; // which -> {map, layer, fitted}
+function renderSiteMap(which){
+  const cont=$('map_'+which), listEl=$('mapList_'+which);
+  if(!cont||!listEl) return;
+  const occ=siteOccupancy();
+  // textual list — every site (incl. those with no map location) plus any stray site names
+  const rows=sites.map(s=>({name:s.name,n:(occ[s.name]||[]).length,mapped:s.lat!=null&&s.lng!=null}));
+  Object.keys(occ).forEach(nm=>{ if(!sites.some(s=>s.name===nm)) rows.push({name:nm,n:occ[nm].length,mapped:false}); });
+  const totalOn=Object.values(occ).reduce((a,b)=>a+b.length,0);
+  listEl.innerHTML = rows.length
+    ? rows.map(r=>`<div class="mi"><span>${r.mapped?'📍':'&nbsp;&nbsp;&nbsp;'} ${esc(r.name)}</span><span class="cnt ${r.n>0?'on':'off'}">${r.n} on site</span></div>`).join('')
+      + `<div class="mi" style="border-top:2px solid var(--line)"><span><b>Total on site</b></span><span class="cnt ${totalOn>0?'on':'off'}"><b>${totalOn}</b></span></div>`
+    : '<div class="muted">No job sites yet.</div>';
+  if(typeof L==='undefined'){ cont.innerHTML='<div class="muted" style="padding:20px;text-align:center">Map failed to load (no internet?).</div>'; return; }
+  if(cont.offsetParent===null) return; // tab hidden — skip map work, refresh again when shown
+  const pinned=sites.filter(s=>s.lat!=null&&s.lng!=null);
+  if(!pinned.length){
+    if(siteMaps[which]){ siteMaps[which].map.remove(); delete siteMaps[which]; }
+    cont.dataset.built=''; cont.innerHTML='<div class="muted" style="padding:24px;text-align:center;line-height:1.5">No site locations set yet.<br>In <b>Manage job sites</b> (Admin), edit a site and tap <b>“Use my current location”</b> while standing on site to drop its pin here.</div>';
+    return;
+  }
+  let st=siteMaps[which];
+  if(!st || cont.dataset.built!=='1'){
+    cont.innerHTML=''; cont.dataset.built='1';
+    const map=L.map(cont,{zoomControl:true});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      {maxZoom:19,subdomains:'abcd',attribution:'© OpenStreetMap © CARTO'}).addTo(map);
+    st=siteMaps[which]={map,layer:L.layerGroup().addTo(map),fitted:false};
+  }
+  st.layer.clearLayers();
+  const pts=[];
+  pinned.forEach(s=>{
+    const names=occ[s.name]||[]; const n=names.length;
+    const icon=L.divIcon({className:'site-pin',iconSize:[34,34],iconAnchor:[17,17],
+      html:`<div class="pin ${n>0?'on':'off'}">${n}</div>`});
+    L.marker([s.lat,s.lng],{icon}).addTo(st.layer)
+      .bindTooltip(`<b>${esc(s.name)}</b><br>${n} on site${names.length?': '+names.map(esc).join(', '):''}`,{direction:'top',offset:[0,-16]});
+    pts.push([s.lat,s.lng]);
+  });
+  setTimeout(()=>{ st.map.invalidateSize();
+    if(!st.fitted){ pts.length===1 ? st.map.setView(pts[0],15) : st.map.fitBounds(pts,{padding:[45,45]}); st.fitted=true; }
+  },60);
 }
 
 // live clock path: uses selected mode + current time + selected job site
