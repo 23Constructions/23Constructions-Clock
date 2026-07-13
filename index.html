@@ -10,16 +10,20 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <style>
   :root{
-    --bg:#0f172a; --card:#1e293b; --card2:#273549; --line:#334155;
-    --txt:#e2e8f0; --muted:#94a3b8;
-    --in:#22c55e; --in-bg:#14361f; --out:#f97316; --out-bg:#3a230f;
-    --accent:#38bdf8; --danger:#ef4444;
+    /* Brand theme: Orange · Charcoal · White */
+    --bg:#f4f5f7; --card:#ffffff; --card2:#eef0f3; --line:#dfe3e8;
+    --txt:#2b2f36; --muted:#6b7280;
+    --in:#16a34a; --in-bg:#e7f6ec; --out:#e8590c; --out-bg:#fdeee2;
+    --accent:#f4611a; --danger:#dc2626;
+    --charcoal:#2b2f36;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
     background:var(--bg);color:var(--txt);line-height:1.5}
-  header{padding:18px 20px;background:linear-gradient(135deg,#0c4a6e,#1e293b);
+  header{padding:18px 20px;background:linear-gradient(135deg,#3a3f47,#23262b);color:#fff;
     display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:10}
+  header .muted{color:#c7ccd3}
+  header h1 .accent-bar{color:var(--accent)}
   header h1{font-size:1.15rem;margin:0;display:flex;align-items:center;gap:10px}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 0 rgba(56,189,248,.6)}
   .dot.live{background:var(--in);animation:pulse 1.6s infinite}
@@ -51,7 +55,7 @@
   .status.show{display:block}
   .status.ok{background:var(--in-bg);color:var(--in)}
   .status.warn{background:var(--out-bg);color:var(--out)}
-  .status.err{background:#3a1212;color:#fca5a5}
+  .status.err{background:#fdecec;color:#b91c1c}
   .big{font-size:1.5rem;display:block;margin-bottom:2px}
   .muted{color:var(--muted);font-size:.85rem}
   table{width:100%;border-collapse:collapse;font-size:.9rem}
@@ -62,8 +66,8 @@
   .badge.OUT{background:var(--out-bg);color:var(--out)}
   .flag{padding:1px 7px;border-radius:20px;font-size:.68rem;font-weight:700;margin-left:4px;white-space:nowrap}
   .fl-ok{background:var(--in-bg);color:var(--in)}
-  .fl-short{background:#3a1212;color:#fca5a5}
-  .fl-ot{background:#3a2a0f;color:#fbbf24}
+  .fl-short{background:#fdecec;color:#b91c1c}
+  .fl-ot{background:#fef3c7;color:#b45309}
   .fl-na{background:var(--card2);color:var(--muted)}
   input,select{width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);
     background:var(--card2);color:var(--txt);font-size:.95rem;margin-top:4px}
@@ -111,8 +115,8 @@
   .site-pin .pin{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;
     font-weight:800;font-size:.95rem;color:#fff;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5)}
   .site-pin .pin.on{background:var(--in)} .site-pin .pin.off{background:#64748b}
-  .leaflet-tooltip{background:#0f172a;color:#e2e8f0;border:1px solid var(--line);border-radius:6px;font-size:.8rem}
-  .leaflet-tooltip-top:before{border-top-color:var(--line)}
+  .leaflet-tooltip{background:var(--charcoal);color:#fff;border:1px solid var(--charcoal);border-radius:6px;font-size:.8rem}
+  .leaflet-tooltip-top:before{border-top-color:var(--charcoal)}
 </style>
 </head>
 <body>
@@ -1065,7 +1069,7 @@ function renderSiteMap(which){
   if(!st || cont.dataset.built!=='1'){
     cont.innerHTML=''; cont.dataset.built='1';
     const map=L.map(cont,{zoomControl:true});
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
       {maxZoom:19,subdomains:'abcd',attribution:'© OpenStreetMap © CARTO'}).addTo(map);
     st=siteMaps[which]={map,layer:L.layerGroup().addTo(map),fitted:false};
   }
