@@ -132,9 +132,9 @@
   .punch .pinfo{flex:1;min-width:0;font-size:.9rem;line-height:1.35}
   .punch .pinfo .psub{color:var(--muted);font-size:.8rem}
   .punch .pacts{display:flex;gap:6px;flex:0 0 auto}
-  .lang-toggle{display:flex;gap:6px;margin-bottom:14px}
-  .lang-toggle button{flex:1;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--card2);color:var(--muted);font-weight:700;font-size:.95rem;cursor:pointer}
-  .lang-toggle button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .lang-mini{display:flex;border:1px solid rgba(255,255,255,.35);border-radius:7px;overflow:hidden;flex:0 0 auto}
+  .lang-mini button{padding:3px 9px;border:0;background:transparent;color:#c7ccd3;font-size:.82rem;font-weight:700;line-height:1.5;cursor:pointer}
+  .lang-mini button.on{background:var(--accent);color:#fff}
   /* On narrow phones, stack each record into a tidy card instead of a cramped 5-column table */
   @media (max-width:560px){
     #logBody thead, #foremanLog thead{display:none}
@@ -154,7 +154,13 @@
 <body>
 <header>
   <h1><span class="dot" id="liveDot"></span>23Constructions Clock</h1>
-  <span class="muted" id="clock"></span>
+  <div style="display:flex;align-items:center;gap:10px;flex:0 0 auto">
+    <div class="lang-mini">
+      <button id="langEn">EN</button>
+      <button id="langZh">中</button>
+    </div>
+    <span class="muted" id="clock"></span>
+  </div>
 </header>
 <main>
   <div class="tabs">
@@ -165,10 +171,6 @@
 
   <!-- CLOCK -->
   <section class="panel active" id="tab-clock">
-    <div class="lang-toggle">
-      <button id="langEn">English</button>
-      <button id="langZh">中文</button>
-    </div>
     <div class="card" id="ownerCard"></div>
     <div class="card">
       <div id="bigStatus"></div>
