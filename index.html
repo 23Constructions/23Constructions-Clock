@@ -132,6 +132,9 @@
   .punch .pinfo{flex:1;min-width:0;font-size:.9rem;line-height:1.35}
   .punch .pinfo .psub{color:var(--muted);font-size:.8rem}
   .punch .pacts{display:flex;gap:6px;flex:0 0 auto}
+  .lang-toggle{display:flex;gap:6px;margin-bottom:14px}
+  .lang-toggle button{flex:1;padding:11px;border:1px solid var(--line);border-radius:9px;background:var(--card2);color:var(--muted);font-weight:700;font-size:.95rem;cursor:pointer}
+  .lang-toggle button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   /* On narrow phones, stack each record into a tidy card instead of a cramped 5-column table */
   @media (max-width:560px){
     #logBody thead, #foremanLog thead{display:none}
@@ -155,44 +158,48 @@
 </header>
 <main>
   <div class="tabs">
-    <button class="active" data-tab="clock">Clock</button>
+    <button class="active" data-tab="clock" data-i18n="tabClock">Clock</button>
     <button data-tab="foreman">Foreman 🔒</button>
     <button data-tab="admin">Admin 🔒</button>
   </div>
 
   <!-- CLOCK -->
   <section class="panel active" id="tab-clock">
+    <div class="lang-toggle">
+      <button id="langEn">English</button>
+      <button id="langZh">中文</button>
+    </div>
     <div class="card" id="ownerCard"></div>
     <div class="card">
       <div id="bigStatus"></div>
-      <label>Job site<select id="siteSel"></select></label>
+      <label><span data-i18n="jobSite">Job site</span><select id="siteSel"></select></label>
       <div class="mode-toggle">
-        <button id="modeIn" class="sel-in">● CLOCK IN</button>
-        <button id="modeOut">● CLOCK OUT</button>
+        <button id="modeIn" class="sel-in" data-i18n="clockIn">● CLOCK IN</button>
+        <button id="modeOut" data-i18n="clockOut">● CLOCK OUT</button>
       </div>
       <button class="scan-btn" id="actionBtn" disabled>Confirm Clock In</button>
       <div class="row" style="margin-top:10px">
         <button class="btn ghost" id="nfcBtn" style="flex:1">📡 Enable tag tap</button>
       </div>
       <div class="status" id="status"></div>
-      <div class="hint" id="ruleHint">This phone is registered to one person — only they can clock in/out here. Pick CLOCK IN or CLOCK OUT, then press the button or tap the assigned tag. Sites marked ⌖ are geofenced: you must be on-site to clock in, and you're signed out automatically if you leave. Over 10 h needs approver sign-off.</div>
+      <div class="hint" id="ruleHint" data-i18n="ruleHint">This phone is registered to one person — only they can clock in/out here. Pick CLOCK IN or CLOCK OUT, then press the button or tap the assigned tag. Sites marked ⌖ are geofenced: you must be on-site to clock in, and you're signed out automatically if you leave. Over 10 h needs approver sign-off.</div>
       <div class="hint" id="nfcHint"></div>
     </div>
     <div class="card" id="myHoursCard" style="display:none">
-      <strong>My hours</strong>
+      <strong data-i18n="myHours">My hours</strong>
       <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);margin-top:12px">
-        <div class="stat"><div class="n" id="myToday">0.0</div><div class="l">Today</div></div>
-        <div class="stat"><div class="n" id="myWeek">0.0</div><div class="l">This week</div></div>
+        <div class="stat"><div class="n" id="myToday">0.0</div><div class="l" data-i18n="today">Today</div></div>
+        <div class="stat"><div class="n" id="myWeek">0.0</div><div class="l" data-i18n="thisWeek">This week</div></div>
       </div>
-      <div class="muted" style="font-size:.78rem;margin-top:8px">Completed shifts only · week starts Monday.</div>
+      <div class="muted" style="font-size:.78rem;margin-top:8px" data-i18n="completedNote">Completed shifts only · week starts Monday.</div>
     </div>
     <div class="card" id="weekCard" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
-        <strong>Weekly hours</strong>
+        <strong data-i18n="weeklyHours">Weekly hours</strong>
         <select id="weekSel" style="max-width:210px"></select>
       </div>
       <div id="weekTable"></div>
-      <button class="btn ghost" id="downloadWeekBtn" style="width:100%;margin-top:12px">⬇ Download selected week</button>
+      <button class="btn ghost" id="downloadWeekBtn" style="width:100%;margin-top:12px" data-i18n="downloadWeek">⬇ Download selected week</button>
     </div>
   </section>
 
@@ -348,6 +355,100 @@ const LS_LOG='nfc_tc_log', LS_ROS='nfc_tc_roster', LS_OWNER='nfc_tc_owner';
 const LS_OWNERINFO='nfc_tc_ownerinfo'; // full owner {key,name,card} — lets this phone self-heal if the shared roster drops the entry
 const LS_SITES='nfc_tc_sites', LS_CURSITE='nfc_tc_cursite', LS_SHEET='nfc_tc_sheeturl';
 let sheetUrl = localStorage.getItem(LS_SHEET)||'';   // Google Apps Script Web App URL (shared via config)
+
+/* ================= i18n: Clock-tab language (English / 简体中文) ================= */
+const LS_LANG='nfc_tc_lang';
+let lang = localStorage.getItem(LS_LANG) || 'en';   // per-phone language choice
+const DAY_SHORT={ en:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], zh:['周一','周二','周三','周四','周五','周六','周日'] };
+const I18N={
+  en:{
+    tabClock:'Clock',
+    jobSite:'Job site',
+    clockIn:'● CLOCK IN', clockOut:'● CLOCK OUT',
+    confirm:'Confirm', confirmIn:'Confirm CLOCK IN', confirmOut:'Confirm CLOCK OUT',
+    enableTag:'📡 Enable tag tap', listening:'⏹ Listening — tap the tag (tap here to stop)',
+    ruleHint:"This phone is registered to one person — only they can clock in/out here. Pick CLOCK IN or CLOCK OUT, then press the button or tap the assigned tag. Sites marked ⌖ are geofenced: you must be on-site to clock in, and you're signed out automatically if you leave. Over 10 h needs approver sign-off.",
+    nfcHintOk:'✓ Web NFC available. Press “Enable tag tap”, then hold the registered tag to the back of the phone.',
+    nfcHintNo:'⚠ Tag tap needs Chrome on Android (over HTTPS). On other devices, use the CLOCK IN / CLOCK OUT button — it works everywhere.',
+    registerToBegin:'Register this phone to an employee to begin.',
+    ownerTitle:'Enter your name to start',
+    ownerDesc:"This registers the phone to you. ⚠ Your name <b>can't be changed</b> afterwards — type it carefully.",
+    yourName:'Your name', namePlaceholder:'e.g. Ahmad bin Ali', setNameBtn:'Set my name & lock phone',
+    confirmRegister:'Register this phone to "{name}"?\n\nThis name CANNOT be changed afterwards.',
+    registeredTo:'REGISTERED TO THIS PHONE', lockedNote:"🔒 Locked to this person — can't be changed",
+    currentlyIn:'● Currently CLOCKED IN', clockedOut:'Clocked OUT',
+    since:'since {t}', countsFrom:'counts from {t}', startCounted:'start counted {t}', endsAt:'ends {t}',
+    autoSignout:'📍 {site} · auto sign-out beyond {r} m',
+    myHours:'My hours', today:'Today', thisWeek:'This week',
+    completedNote:'Completed shifts only · week starts Monday.',
+    weeklyHours:'Weekly hours', downloadWeek:'⬇ Download selected week',
+    colDay:'Day', colHours:'Hours', weekTotal:'Week total', inProgress:'in progress', absent:'Absent', thisWeekPrefix:'This week · ',
+    nameRequired:'Name required', nameRequiredSub:'Type your name to continue.',
+    welcome:'Welcome, {name}', welcomeSub:'This phone is now registered to you.',
+    noEmp:'No employee registered', noEmpSub:'Register this phone first.',
+    alreadyIn:'Already clocked in', alreadyInSub:'{name} is already IN. Switch to CLOCK OUT.',
+    notIn:'Not clocked in', notInSub:'{name} has no open shift. Switch to CLOCK IN.',
+    checkingLoc:'Checking your location…', checkingLocSub:'Allow location if prompted',
+    tooFar:'Too far from {site}', tooFarSub:'{d} m away — must be within {r} m to clock in.',
+    locRequired:'Location required', locRequiredSub:'{site} is geofenced. Turn on location/GPS and allow it, then try again.',
+    clockedInHead:'✓ Clocked IN', clockedOutHead:'✓ Clocked OUT',
+    belowMinHead:'⚠ Clocked OUT — below {min}h minimum', otApprovedHead:'✓ Clocked OUT — overtime approved',
+    autoOutHead:'⚠ Auto signed OUT', autoOutSub:'Left {site} ({d} m). Back within {n} min resumes your shift.',
+    resumedHead:'✓ Back within {n} min — shift resumed', resumedSub:'Your hours at {site} continue uninterrupted.',
+    by:'· by {who}'
+  },
+  zh:{
+    tabClock:'打卡',
+    jobSite:'工作地点',
+    clockIn:'● 上班打卡', clockOut:'● 下班打卡',
+    confirm:'确认', confirmIn:'确认上班打卡', confirmOut:'确认下班打卡',
+    enableTag:'📡 启用刷卡', listening:'⏹ 正在读取 — 请刷卡（点此停止）',
+    ruleHint:'此手机只登记给一位员工 — 只有本人能在此打卡。请选择上班或下班，然后按按钮或刷指定的卡。标有 ⌖ 的地点设有围栏：必须在现场才能上班打卡，离开会自动签退。超过 10 小时需主管批准。',
+    nfcHintOk:'✓ 支持网页 NFC。按“启用刷卡”，然后把已登记的卡贴近手机背面。',
+    nfcHintNo:'⚠ 刷卡需要安卓上的 Chrome（HTTPS）。其他设备请用上班/下班按钮 — 到处都能用。',
+    registerToBegin:'请先把此手机登记给员工以开始。',
+    ownerTitle:'输入姓名开始',
+    ownerDesc:'此操作会把手机登记给你。⚠ 姓名一旦设定<b>将无法更改</b> — 请仔细输入。',
+    yourName:'你的姓名', namePlaceholder:'例如：张伟 / John', setNameBtn:'设定姓名并锁定手机',
+    confirmRegister:'把此手机登记给“{name}”？\n\n姓名设定后将无法更改。',
+    registeredTo:'此手机已登记给', lockedNote:'🔒 已锁定此人 — 无法更改',
+    currentlyIn:'● 目前已上班打卡', clockedOut:'已下班打卡',
+    since:'自 {t}', countsFrom:'计时从 {t}', startCounted:'计时从 {t}', endsAt:'结束于 {t}',
+    autoSignout:'📍 {site} · 超出 {r} 米自动签退',
+    myHours:'我的工时', today:'今天', thisWeek:'本周',
+    completedNote:'仅计已完成班次 · 每周一开始',
+    weeklyHours:'每周工时', downloadWeek:'⬇ 下载所选周',
+    colDay:'日期', colHours:'工时', weekTotal:'本周合计', inProgress:'进行中', absent:'缺勤', thisWeekPrefix:'本周 · ',
+    nameRequired:'需要姓名', nameRequiredSub:'请输入姓名以继续。',
+    welcome:'欢迎，{name}', welcomeSub:'此手机现已登记给你。',
+    noEmp:'未登记员工', noEmpSub:'请先登记此手机。',
+    alreadyIn:'已经上班打卡', alreadyInSub:'{name} 已上班。请切换到下班打卡。',
+    notIn:'尚未上班打卡', notInSub:'{name} 没有进行中的班次。请切换到上班打卡。',
+    checkingLoc:'正在检查你的位置…', checkingLocSub:'如有提示请允许定位',
+    tooFar:'距离 {site} 太远', tooFarSub:'距离 {d} 米 — 必须在 {r} 米内才能上班打卡。',
+    locRequired:'需要定位', locRequiredSub:'{site} 已设围栏。请打开定位/GPS 并允许，然后重试。',
+    clockedInHead:'✓ 已上班打卡', clockedOutHead:'✓ 已下班打卡',
+    belowMinHead:'⚠ 已下班打卡 — 少于最低 {min} 小时', otApprovedHead:'✓ 已下班打卡 — 加班已批准',
+    autoOutHead:'⚠ 已自动签退', autoOutSub:'离开了 {site}（{d} 米）。{n} 分钟内返回可继续班次。',
+    resumedHead:'✓ {n} 分钟内返回 — 班次已恢复', resumedSub:'你在 {site} 的工时将继续不中断。',
+    by:'· 由 {who}'
+  }
+};
+function t(k, vars){
+  let s=(I18N[lang]&&I18N[lang][k]!=null)?I18N[lang][k]:(I18N.en[k]!=null?I18N.en[k]:k);
+  if(vars) Object.keys(vars).forEach(n=>{ s=s.split('{'+n+'}').join(vars[n]); });
+  return s;
+}
+function setLang(l){ lang=l; try{localStorage.setItem(LS_LANG,l);}catch(e){} applyLang(); }
+function applyLang(){
+  document.querySelectorAll('[data-i18n]').forEach(el=>{ el.textContent=t(el.getAttribute('data-i18n')); });
+  const be=$('langEn'), bz=$('langZh');
+  if(be)be.classList.toggle('on', lang==='en');
+  if(bz)bz.classList.toggle('on', lang==='zh');
+  if($('nfcBtn') && (typeof scanning==='undefined' || !scanning)) $('nfcBtn').textContent=t('enableTag');
+  if($('nfcHint')) $('nfcHint').innerHTML = nfcSupported ? t('nfcHintOk') : t('nfcHintNo');
+  if(typeof renderClock==='function') renderClock();
+}
 const MIN_HOURS=8, MAX_HOURS=10;   // <8h flagged short; >10h needs permission
 const DAY_START_H=6, ROUND_MIN=15; // workday starts 6:00; round clock-in UP to 15-min marks
 let mode='IN';                     // set automatically before each record()
@@ -569,13 +670,13 @@ function ensureOwnerInRoster(){
 // employee self-registration by name — permanent once set
 function registerSelf(){
   const name=($('selfName')&&$('selfName').value||'').trim();
-  if(!name){showStatus('err','Name required','Type your name to continue.');return;}
-  if(!confirm('Register this phone to "'+name+'"?\n\nThis name CANNOT be changed afterwards.')) return;
+  if(!name){showStatus('err',t('nameRequired'),t('nameRequiredSub'));return;}
+  if(!confirm(t('confirmRegister',{name:name}))) return;
   let emp=roster.find(r=>r.name.toLowerCase()===name.toLowerCase());
   if(!emp){emp={key:newKey(),name,card:''};roster.push(emp);save();fbSaveConfig();}
   setOwner(emp.key);
   if(adminUnlocked){renderRoster();renderManualEmployees();}
-  showStatus('ok','Welcome, '+name,'This phone is now registered to you.');
+  showStatus('ok',t('welcome',{name:name}),t('welcomeSub'));
 }
 // admin-only reset (safety net for typos); not shown on the clock screen
 function changeOwner(){if(!ensureAdmin())return;if(confirm('Reset this device registration? The next person to enter their name will own it.')){ownerKey='';saveOwner();ownerInfo=null;saveOwnerInfo();renderClock();renderAdmin();}}
@@ -583,14 +684,14 @@ function changeOwner(){if(!ensureAdmin())return;if(confirm('Reset this device re
 function renderOwnerCard(){
   const el=$('ownerCard'), o=getOwner();
   if(o){
-    el.innerHTML=`<div class="muted" style="font-size:.72rem;letter-spacing:.05em">REGISTERED TO THIS PHONE</div>
+    el.innerHTML=`<div class="muted" style="font-size:.72rem;letter-spacing:.05em">${t('registeredTo')}</div>
       <div style="font-weight:700;font-size:1.15rem">${esc(o.name)}</div>
-      <div class="muted" style="font-size:.74rem;margin-top:3px">🔒 Locked to this person — can't be changed</div>`;
+      <div class="muted" style="font-size:.74rem;margin-top:3px">${t('lockedNote')}</div>`;
   } else {
-    el.innerHTML=`<strong>Enter your name to start</strong>
-      <div class="muted" style="font-size:.82rem;margin:4px 0 8px">This registers the phone to you. ⚠ Your name <b>can't be changed</b> afterwards — type it carefully.</div>
-      <label>Your name<input id="selfName" placeholder="e.g. Ahmad bin Ali" autocomplete="off"></label>
-      <button class="btn" style="margin-top:10px;width:100%" onclick="registerSelf()">Set my name &amp; lock phone</button>`;
+    el.innerHTML=`<strong>${t('ownerTitle')}</strong>
+      <div class="muted" style="font-size:.82rem;margin:4px 0 8px">${t('ownerDesc')}</div>
+      <label>${t('yourName')}<input id="selfName" placeholder="${t('namePlaceholder')}" autocomplete="off"></label>
+      <button class="btn" style="margin-top:10px;width:100%" onclick="registerSelf()">${t('setNameBtn')}</button>`;
   }
 }
 
@@ -682,7 +783,7 @@ function ownerWeeks(){
 }
 function weekLabel(ws){ const end=new Date(ws); end.setDate(end.getDate()+6);
   const cur=startOfWeek(Date.now());
-  return (ws===cur?'This week · ':'')+fmtDM(ws)+'–'+fmtDM(end.getTime())+'/'+new Date(ws).getFullYear(); }
+  return (ws===cur?t('thisWeekPrefix'):'')+fmtDM(ws)+'–'+fmtDM(end.getTime())+'/'+new Date(ws).getFullYear(); }
 function renderWeekUI(){
   const card=$('weekCard'), o=getOwner();
   if(!o){card.style.display='none';return;}
@@ -704,11 +805,12 @@ function renderWeekTable(){
     const hrs=totalHours(dayE); total+=hrs;
     const absent=dayE.some(e=>e.action==='ABSENT');
     const openNow=dayE.some(e=>e.action==='IN') && !dayE.some(e=>e.action==='OUT');
-    let lbl = absent?'<span style="color:var(--out)">Absent</span>' : (hrs>0?hrs.toFixed(2)+' h':(openNow?'<span class="muted">in progress</span>':'<span class="muted">—</span>'));
-    rows+=`<tr><td>${DAYNAMES[i]} ${fmtDM(ds.getTime())}</td><td style="text-align:right">${lbl}</td></tr>`;
+    let lbl = absent?`<span style="color:var(--out)">${t('absent')}</span>` : (hrs>0?hrs.toFixed(2)+' h':(openNow?`<span class="muted">${t('inProgress')}</span>`:'<span class="muted">—</span>'));
+    const dname=(DAY_SHORT[lang]||DAY_SHORT.en)[i];
+    rows+=`<tr><td>${dname} ${fmtDM(ds.getTime())}</td><td style="text-align:right">${lbl}</td></tr>`;
   }
-  rows+=`<tr><td><b>Week total</b></td><td style="text-align:right"><b>${total.toFixed(2)} h</b></td></tr>`;
-  $('weekTable').innerHTML='<table><thead><tr><th>Day</th><th style="text-align:right">Hours</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  rows+=`<tr><td><b>${t('weekTotal')}</b></td><td style="text-align:right"><b>${total.toFixed(2)} h</b></td></tr>`;
+  $('weekTable').innerHTML=`<table><thead><tr><th>${t('colDay')}</th><th style="text-align:right">${t('colHours')}</th></tr></thead><tbody>`+rows+'</tbody></table>';
 }
 function renderClock(){
   sweepIncomplete();
@@ -718,8 +820,8 @@ function renderClock(){
   if($('siteSel'))$('siteSel').innerHTML=siteOptions(curSite);
   const o=getOwner(), bs=$('bigStatus'), ab=$('actionBtn');
   if(!o){
-    bs.innerHTML='<span class="muted">Register this phone to an employee to begin.</span>';
-    ab.disabled=true;ab.className='scan-btn';ab.textContent='Confirm';
+    bs.innerHTML=`<span class="muted">${t('registerToBegin')}</span>`;
+    ab.disabled=true;ab.className='scan-btn';ab.textContent=t('confirm');
     return;
   }
   ab.disabled=false;
@@ -728,39 +830,39 @@ function renderClock(){
     const inT=new Date(ie.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     const eff=new Date(startTs(ie)).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
     bs.innerHTML=`<span class="bs-name">${esc(o.name)}</span>
-      <span class="bs-state in">● Currently CLOCKED IN</span><br>
-      <span class="muted">since ${inT}${startTs(ie)!==ie.ts?' · counts from '+eff:''}</span>`;
+      <span class="bs-state in">${t('currentlyIn')}</span><br>
+      <span class="muted">${t('since',{t:inT})}${startTs(ie)!==ie.ts?' · '+t('countsFrom',{t:eff}):''}</span>`;
   } else {
     bs.innerHTML=`<span class="bs-name">${esc(o.name)}</span>
-      <span class="bs-state out">Clocked OUT</span>`;
+      <span class="bs-state out">${t('clockedOut')}</span>`;
   }
   ab.className='scan-btn '+(mode==='IN'?'in':'out');
-  ab.textContent=mode==='IN'?'Confirm CLOCK IN':'Confirm CLOCK OUT';
-  if(ie){ const s=siteByName(ie.site); if(isGeofenced(s)) bs.innerHTML+=`<br><span class="muted">📍 ${esc(s.name)} · auto sign-out beyond ${s.radius} m</span>`; }
+  ab.textContent=mode==='IN'?t('confirmIn'):t('confirmOut');
+  if(ie){ const s=siteByName(ie.site); if(isGeofenced(s)) bs.innerHTML+=`<br><span class="muted">${t('autoSignout',{site:esc(s.name),r:s.radius})}</span>`; }
   if(typeof syncGeoWatch==='function') syncGeoWatch();
 }
 
 /* perform the selected action for the device owner only */
 async function doAction(){
   const o=getOwner();
-  if(!o){showStatus('err','No employee registered','Register this phone first.');return;}
-  if(mode==='IN'&&openIn(o.key)){showStatus('warn','Already clocked in',o.name+' is already IN. Switch to CLOCK OUT.');return;}
-  if(mode==='OUT'&&!openIn(o.key)){showStatus('warn','Not clocked in',o.name+' has no open shift. Switch to CLOCK IN.');return;}
+  if(!o){showStatus('err',t('noEmp'),t('noEmpSub'));return;}
+  if(mode==='IN'&&openIn(o.key)){showStatus('warn',t('alreadyIn'),t('alreadyInSub',{name:o.name}));return;}
+  if(mode==='OUT'&&!openIn(o.key)){showStatus('warn',t('notIn'),t('notInSub',{name:o.name}));return;}
   // geofence: block clock-in if outside the selected site's radius
   if(mode==='IN'){
     const site=siteByName(($('siteSel')&&$('siteSel').value)||curSite);
     if(isGeofenced(site)){
-      showStatus('warn','Checking your location…','Allow location if prompted');
+      showStatus('warn',t('checkingLoc'),t('checkingLocSub'));
       try{
         const p=await getPos();
         const d=distM(p.lat,p.lng,site.lat,site.lng);
         if(d>site.radius){
-          showStatus('err','Too far from '+site.name,Math.round(d)+' m away — must be within '+site.radius+' m to clock in.');
+          showStatus('err',t('tooFar',{site:site.name}),t('tooFarSub',{d:Math.round(d),r:site.radius}));
           navigator.vibrate&&navigator.vibrate([200,80,200]);
           return;
         }
       }catch(e){
-        showStatus('err','Location required',site.name+' is geofenced. Turn on location/GPS and allow it, then try again.');
+        showStatus('err',t('locRequired'),t('locRequiredSub',{site:site.name}));
         return;
       }
     }
@@ -808,7 +910,7 @@ function autoClockOut(site,dist){
   mode='OUT';
   const siteVal=($('siteSel')&&$('siteSel').value)||curSite;
   if(recordAt(o.name,o.key,'OUT',Date.now(),false,false,siteVal,true)){ // geoAuto=true
-    showStatus('warn','⚠ Auto signed OUT','Left '+site.name+' ('+dist+' m). Back within '+GEO_RESUME_MIN+' min resumes your shift.');
+    showStatus('warn',t('autoOutHead'),t('autoOutSub',{site:site.name,d:dist,n:GEO_RESUME_MIN}));
     navigator.vibrate&&navigator.vibrate([120,60,120,60,120]);
   }
   renderClock();   // syncGeoWatch keeps the watch alive in 'return' mode
@@ -818,7 +920,7 @@ function resumeShift(site,outEntry){
   log=log.filter(e=>e.uid!==outEntry.uid);
   fbDeleteRecord(outEntry.uid);
   recomputeHours(); save();
-  showStatus('ok','✓ Back within '+GEO_RESUME_MIN+' min — shift resumed','Your hours at '+site.name+' continue uninterrupted.');
+  showStatus('ok',t('resumedHead',{n:GEO_RESUME_MIN}),t('resumedSub',{site:site.name}));
   navigator.vibrate&&navigator.vibrate(120);
   renderClock(); if(adminUnlocked)renderLog();
 }
@@ -964,9 +1066,7 @@ function delSite(i){
 }
 
 /* ---------- NFC hint ---------- */
-$('nfcHint').innerHTML = nfcSupported
-  ? '✓ Web NFC available. Press “Enable tag tap”, then hold the registered tag to the back of the phone.'
-  : '⚠ Tag tap needs Chrome on Android (over HTTPS). On other devices, use the CLOCK IN / CLOCK OUT button — it works everywhere.';
+$('nfcHint').innerHTML = nfcSupported ? t('nfcHintOk') : t('nfcHintNo');
 
 /* ---------- scanning ---------- */
 $('nfcBtn').onclick=toggleScan;
@@ -981,7 +1081,7 @@ async function toggleScan(){
     await reader.scan();
     scanning=true;
     $('liveDot').classList.add('live');
-    $('nfcBtn').textContent='⏹ Listening — tap the tag (tap here to stop)';
+    $('nfcBtn').textContent=t('listening');
     reader.onreading=e=>handleTag(e.serialNumber);
     reader.onreadingerror=()=>showStatus('err','Could not read tag','Try again');
   }catch(err){
@@ -990,7 +1090,7 @@ async function toggleScan(){
 }
 function stopScan(){
   scanning=false;$('liveDot').classList.remove('live');
-  $('nfcBtn').textContent='📡 Enable tag tap';
+  $('nfcBtn').textContent=t('enableTag');
 }
 
 /* normalize serial */
@@ -1171,15 +1271,15 @@ function recordAt(name,id,action,now,manual,unknown,site,geoAuto){
   log.unshift(entry);log.sort((a,b)=>b.ts-a.ts);save();fbSetRecord(entry);
   navigator.vibrate&&navigator.vibrate(unknown?[80,60,80]:(flag==='SHORT'?[60,40,60,40,60]:120));
 
-  const t=new Date(now).toLocaleTimeString();
+  const nowT=new Date(now).toLocaleTimeString();
   const effT=adjTs!=null?new Date(adjTs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'';
-  let head=(action==='IN'?'✓ Clocked IN':'✓ Clocked OUT')+(manual?' (manual)':'')+(unknown?' (unregistered)':'');
-  let sub=`${name} · ${t}`, type=action==='IN'?'ok':'warn';
-  if(action==='IN'&&adjTs!==now){sub=`${name} · ${t} → start counted ${effT}`;}
+  let head=(action==='IN'?t('clockedInHead'):t('clockedOutHead'))+(manual?' (manual)':'')+(unknown?' (unregistered)':'');
+  let sub=`${name} · ${nowT}`, type=action==='IN'?'ok':'warn';
+  if(action==='IN'&&adjTs!==now){sub=`${name} · ${nowT} · ${t('startCounted',{t:effT})}`;}
   if(action==='OUT'&&shiftHours!=null){
-    sub=`${name} · ${shiftHours.toFixed(2)} h${adjTs!==now?' · ends '+effT:''}`;
-    if(flag==='SHORT'){type='err';head='⚠ Clocked OUT — below '+MIN_HOURS+'h minimum';}
-    else if(flag==='OVERTIME-APPROVED'){head='✓ Clocked OUT — overtime approved';sub+=` · by ${permitBy}`;}
+    sub=`${name} · ${shiftHours.toFixed(2)} h${adjTs!==now?' · '+t('endsAt',{t:effT}):''}`;
+    if(flag==='SHORT'){type='err';head=t('belowMinHead',{min:MIN_HOURS});}
+    else if(flag==='OVERTIME-APPROVED'){head=t('otApprovedHead');sub+=` ${t('by',{who:permitBy})}`;}
   }
   showStatus(type,head,sub,statusEl);
   return true;
@@ -1487,7 +1587,10 @@ $('lockBtn').onclick=lockAdmin;
 function stamp(){return new Date().toISOString().slice(0,10)}
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 
+$('langEn') && ($('langEn').onclick=function(){setLang('en');});
+$('langZh') && ($('langZh').onclick=function(){setLang('zh');});
 ensureOwnerInRoster();setMode('IN');renderSites();renderClock();renderAdmin();renderForeman();
+applyLang();   // apply saved Clock-tab language (English / 中文)
 startSync();   // attach Firebase realtime listeners (all devices stay in sync)
 </script>
 </body>
