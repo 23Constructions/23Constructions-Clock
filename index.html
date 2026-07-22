@@ -1505,15 +1505,24 @@ $('exportBtn').onclick=()=>{
 };
 
 /* ---------- Google Sheets export (Apps Script Web App) ---------- */
-const SHEET_HEAD=['Date','Tap Time','Effective Time','Employee','Job Site','Action','Shift Hours','Status','Source','Approved By','Reason','Emp ID','Timestamp (ISO)'];
+const SHEET_HEAD=['Date','Tap Time','Effective Time','Employee','Job Site','Action','Shift Hours','Status','Source','Approved By','Reason'];
+const SUMMARY_HEAD=['Employee','Total Hours'];
 function toSheetRows(rows){
   return rows.map(e=>{
     const d=new Date(e.ts);
     const eff=e.adjTs!=null?new Date(e.adjTs).toLocaleTimeString():'';
     return [d.toLocaleDateString(),d.toLocaleTimeString(),eff,e.name,e.site||'',e.action,
             e.shiftHours!=null?e.shiftHours.toFixed(2):'',e.flag||'',
-            e.manual?'Manual (admin)':'Tap/Button',e.permitBy||'',e.permitReason||'',e.id,d.toISOString()];
+            e.manual?'Manual (admin)':'Tap/Button',e.permitBy||'',e.permitReason||''];
   });
+}
+// total completed hours per employee, for the "Total Hours" tab
+function employeeTotals(entries){
+  const byId={};
+  entries.forEach(e=>{ (byId[e.id]=byId[e.id]||{name:e.name,items:[]}).items.push(e); });
+  return Object.values(byId)
+    .map(g=>[g.name, totalHours(g.items).toFixed(2)])
+    .sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
 }
 function setSheetMsg(t){ if($('sheetUrlMsg'))$('sheetUrlMsg').textContent=t; }
 $('saveSheetUrlBtn').onclick=()=>{
@@ -1526,16 +1535,18 @@ $('saveSheetUrlBtn').onclick=()=>{
   if(db) db.collection('config').doc('shared').set({sheetUrl:sheetUrl},{merge:true}).catch(function(){});
   setSheetMsg(v?'✓ Saved. Shared with all devices.':'Cleared.');
 };
-function postToSheets(rows,btn){
+function postToSheets(entries,btn){
   if(!sheetUrl){ alert('No Google Sheet connected yet. Paste your Apps Script Web App URL in the "Google Sheets sync" card and Save.'); return; }
+  const records=toSheetRows(entries);
+  const summary=employeeTotals(entries);
   const label=btn?btn.textContent:''; if(btn){btn.disabled=true;btn.textContent='Sending…';}
   // Real (CORS) request so we can READ the Apps Script response and report success/failure.
   // text/plain avoids a CORS preflight; a correctly-deployed "Anyone" web app returns Access-Control-Allow-Origin:*.
   fetch(sheetUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},redirect:'follow',
-    body:JSON.stringify({header:SHEET_HEAD,records:rows})})
+    body:JSON.stringify({header:SHEET_HEAD,records:records,summaryHeader:SUMMARY_HEAD,summary:summary})})
     .then(r=>r.text())
     .then(txt=>{
-      let ok=false, count=rows.length;
+      let ok=false, count=records.length;
       try{ const j=JSON.parse(txt); ok=!!j.ok; if(j.count!=null)count=j.count; }catch(e){ ok=/"?ok"?\s*:\s*true/i.test(txt); }
       if(ok){
         setSheetMsg('✓ Synced '+count+' record(s) to Google Sheets at '+new Date().toLocaleTimeString()+'.');
@@ -1553,13 +1564,13 @@ function postToSheets(rows,btn){
 }
 $('sheetsBtn').onclick=function(){
   if(log.length===0)return alert('No records to export.');
-  postToSheets(toSheetRows([...log].reverse()),this);
+  postToSheets([...log].reverse(),this);
 };
 $('testSheetBtn').onclick=function(){
   const v=($('sheetUrlInput').value||'').trim();
   if(!v)return setSheetMsg('Enter a URL first.');
   sheetUrl=v;
-  postToSheets(toSheetRows([{ts:Date.now(),name:'TEST ROW',site:'—',action:'IN',id:'test'}]),this);
+  postToSheets([{ts:Date.now(),name:'TEST ROW',site:'—',action:'IN',id:'test'}],this);
 };
 $('exportTodayBtn').onclick=()=>{
   const today=new Date().toDateString();
