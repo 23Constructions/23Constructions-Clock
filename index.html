@@ -1506,7 +1506,6 @@ $('exportBtn').onclick=()=>{
 
 /* ---------- Google Sheets export (Apps Script Web App) ---------- */
 const SHEET_HEAD=['Date','Tap Time','Effective Time','Employee','Job Site','Action','Shift Hours','Status','Source','Approved By','Reason'];
-const SUMMARY_HEAD=['Employee','Total Hours'];
 function toSheetRows(rows){
   return rows.map(e=>{
     const d=new Date(e.ts);
@@ -1516,13 +1515,24 @@ function toSheetRows(rows){
             e.manual?'Manual (admin)':'Tap/Button',e.permitBy||'',e.permitReason||''];
   });
 }
-// total completed hours per employee, for the "Total Hours" tab
-function employeeTotals(entries){
+// Week-by-week completed hours per employee (Monday-start weeks) for the "Total Hours" tab.
+// Returns {header, rows}: one column per week present in the data, plus a Total column.
+function employeeWeeklyTotals(entries){
+  const weeksSet={};
+  entries.forEach(e=>{ weeksSet[startOfWeek(e.ts)]=true; });
+  const weeks=Object.keys(weeksSet).map(Number).sort((a,b)=>a-b); // oldest → newest, left to right
+  const header=['Employee', ...weeks.map(w=>'Week of '+fmtDM(w)), 'Total'];
   const byId={};
   entries.forEach(e=>{ (byId[e.id]=byId[e.id]||{name:e.name,items:[]}).items.push(e); });
-  return Object.values(byId)
-    .map(g=>[g.name, totalHours(g.items).toFixed(2)])
-    .sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  const rows=Object.values(byId).map(g=>{
+    const cells=weeks.map(w=>{
+      const end=w+7*86400000;
+      const h=totalHours(g.items.filter(e=>e.ts>=w && e.ts<end));
+      return h>0 ? +h.toFixed(2) : '';   // blank when 0 for a cleaner sheet
+    });
+    return [g.name, ...cells, +totalHours(g.items).toFixed(2)];
+  }).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  return {header, rows};
 }
 function setSheetMsg(t){ if($('sheetUrlMsg'))$('sheetUrlMsg').textContent=t; }
 $('saveSheetUrlBtn').onclick=()=>{
@@ -1538,12 +1548,12 @@ $('saveSheetUrlBtn').onclick=()=>{
 function postToSheets(entries,btn){
   if(!sheetUrl){ alert('No Google Sheet connected yet. Paste your Apps Script Web App URL in the "Google Sheets sync" card and Save.'); return; }
   const records=toSheetRows(entries);
-  const summary=employeeTotals(entries);
+  const wk=employeeWeeklyTotals(entries);
   const label=btn?btn.textContent:''; if(btn){btn.disabled=true;btn.textContent='Sending…';}
   // Real (CORS) request so we can READ the Apps Script response and report success/failure.
   // text/plain avoids a CORS preflight; a correctly-deployed "Anyone" web app returns Access-Control-Allow-Origin:*.
   fetch(sheetUrl,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},redirect:'follow',
-    body:JSON.stringify({header:SHEET_HEAD,records:records,summaryHeader:SUMMARY_HEAD,summary:summary})})
+    body:JSON.stringify({header:SHEET_HEAD,records:records,summaryHeader:wk.header,summary:wk.rows})})
     .then(r=>r.text())
     .then(txt=>{
       let ok=false, count=records.length;
